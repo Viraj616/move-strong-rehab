@@ -1,0 +1,22 @@
+MOVE STRONG REHAB — SIMPLE SETUP
+
+1. Extract the ZIP on your Windows laptop.
+2. Create or sign in to a free GitHub account.
+3. Create a new PUBLIC repository named: move-strong-rehab
+4. In the empty repository, choose “uploading an existing file” or Add file > Upload files.
+5. Open the extracted app folder and upload everything INSIDE it:
+   index.html, app.js, styles.css, sw.js, manifest.webmanifest, README.md,
+   SETUP_INSTRUCTIONS.txt and the assets folder.
+6. Commit the upload.
+7. Open repository Settings > Pages.
+8. Set Source to “Deploy from a branch”.
+9. Choose branch “main” and folder “/ (root)”, then Save.
+10. GitHub will show your site address on the Pages screen. It will look like:
+    https://YOUR-USERNAME.github.io/move-strong-rehab/
+11. Open that address in Chrome on your Samsung S23+.
+12. Tap Chrome’s three-dot menu > Add to home screen > Install.
+13. Open the installed app, go to Settings, and set your start date.
+14. Before changing phone, clearing browser data or updating the programme,
+    use Settings > Export backup.
+
+For fuller instructions and six-week update steps, open README.md.
