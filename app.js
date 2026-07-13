@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -1002,7 +1002,7 @@ function renderSettings() {
     <section class="settings-card">
       <p class="eyebrow">About</p>
       <p><strong>Move Strong Rehab v${APP_VERSION}</strong></p>
-      <p class="help-text">This v1.4 update improves the exercise diagrams, removes YouTube fallback links, and adds tap-to-open technique guides. This is an independent, Strength Side-inspired training plan. It is not affiliated with Strength Side and does not reproduce a paid programme. It is a training log, not a medical device.</p>
+      <p class="help-text">This v1.5 update adds animated mini-demos, clearer movement visuals, and expanded tap-to-open technique guides. This is an independent, Strength Side-inspired training plan. It is not affiliated with Strength Side and does not reproduce a paid programme. It is a training log, not a medical device.</p>
     </section>
   `;
 
@@ -1247,11 +1247,85 @@ function getExerciseGuide(exercise) {
   return base;
 }
 
+
+function getExerciseFeel(exercise) {
+  const name = exercise.name.toLowerCase();
+  const diagram = exercise.diagram || '';
+  if (name.includes('wall slide') || name.includes('scapular push') || name.includes('serratus') || name.includes('face pull') || name.includes('external rotation')) return 'You should mostly feel the area around the shoulder blade, upper back and back of the shoulder working — not the neck or upper traps taking over.';
+  if (name.includes('push') || name.includes('press') || diagram === 'pushup' || diagram === 'press' || diagram === 'landmine') return 'You should mostly feel chest, triceps and serratus working, with the shoulder feeling stable rather than pinchy.';
+  if (name.includes('hang') || name.includes('pull-up') || name.includes('pull up') || name.includes('row') || name.includes('pulldown') || name.includes('curl')) return 'You should mostly feel lats, mid-back, biceps and your grip, while the shoulder stays connected and controlled.';
+  if (name.includes('squat') || name.includes('lunge') || name.includes('step') || name.includes('wall sit') || diagram === 'squat' || diagram === 'lunge') return 'You should mostly feel quads and glutes, with pressure spread through the full foot and no knee collapse inward.';
+  if (name.includes('hinge') || name.includes('rdl') || name.includes('romanian')) return 'You should mostly feel the hamstrings and glutes loading as the hips move back, not your lower back doing all the work.';
+  if (name.includes('90/90') || name.includes('couch') || name.includes('stretch') || name.includes('pigeon') || name.includes('frog') || diagram === 'hip90' || diagram === 'stretch') return 'You should feel a mild stretch or controlled end-range effort. It should feel productive, not sharp or aggressive.';
+  if (name.includes('hollow') || name.includes('dead bug') || name.includes('side plank') || name.includes('knee raise')) return 'You should mostly feel your trunk working: abs, deep core and front-of-body tension without straining the neck.';
+  if (name.includes('run') || name.includes('walk') || diagram === 'run' || diagram === 'cardio') return 'You should feel the effort mostly in your legs and breathing system, while still being able to control the pace.';
+  return 'You should feel the target area working while the operated shoulder stays calm, even and controlled.';
+}
+
+function getExerciseTempo(exercise) {
+  const name = exercise.name.toLowerCase();
+  const diagram = exercise.diagram || '';
+  if (name.includes('stretch') || name.includes('couch') || name.includes('pigeon') || name.includes('hang') || name.includes('hollow') || name.includes('side plank') || diagram === 'stretch' || diagram === 'hang') return 'Hold still and breathe. If the prescription is a hold, aim for a calm, steady position rather than squeezing harder and harder.';
+  if (name.includes('run') || name.includes('walk') || diagram === 'run' || diagram === 'cardio') return 'Settle into an even rhythm. Easy runs should feel conversational; interval reps should be controlled, not all-out.';
+  return 'Use a smooth 2–3 second lowering phase, a brief pause where control is hardest, then a smooth return. No bouncing or jerking.';
+}
+
+function getExerciseChecklist(exercise) {
+  const name = exercise.name.toLowerCase();
+  const diagram = exercise.diagram || '';
+  if (name.includes('wall slide') || name.includes('scapular push') || name.includes('push-up plus')) return [
+    'Keep the neck long and the upper traps quiet.',
+    'Let the shoulder blade move; do not bend the elbows to cheat.',
+    'Stop the rep before the ribs flare or the operated shoulder shrugs.'
+  ];
+  if (name.includes('push') || name.includes('press') || diagram === 'pushup' || diagram === 'press' || diagram === 'landmine') return [
+    'Hands set, ribs stacked, and both shoulders level before the first rep.',
+    'Lower under control with elbows roughly 30–45° from the ribs.',
+    'Finish by pressing away without shrugging or twisting.'
+  ];
+  if (name.includes('hang') || name.includes('pull-up') || name.includes('pull up') || diagram === 'hang') return [
+    'Step into position rather than jumping to the bar.',
+    'Keep your body quiet and stop before your shoulders lose symmetry.',
+    'One clean rep is more useful than several messy reps right now.'
+  ];
+  if (name.includes('row') || name.includes('pulldown') || name.includes('pull-apart')) return [
+    'Set the ribcage and keep the neck relaxed.',
+    'Lead with the elbows and let the shoulder blades glide naturally.',
+    'Return the weight under control; do not let it yank you forward.'
+  ];
+  if (name.includes('squat') || name.includes('lunge') || name.includes('step') || diagram === 'squat' || diagram === 'lunge') return [
+    'Keep the whole foot grounded.',
+    'Let the knee track over the middle toes rather than collapsing inward.',
+    'Move through a range you can own — not the deepest range possible.'
+  ];
+  if (name.includes('hinge') || name.includes('rdl') || name.includes('romanian')) return [
+    'Push the hips back first.',
+    'Keep the spine long and the ribs quiet.',
+    'Feel the hamstrings load before you think about returning to stand.'
+  ];
+  if (name.includes('90/90') || name.includes('frog') || name.includes('pigeon') || name.includes('couch') || diagram === 'hip90') return [
+    'Go slowly into the end range.',
+    'Use enough hand support to stay controlled.',
+    'Mild stretch is fine; sharp joint pain is not.'
+  ];
+  if (name.includes('run') || name.includes('walk') || diagram === 'run' || diagram === 'cardio') return [
+    'Warm up gradually, especially with asthma.',
+    'Keep easy sessions genuinely easy.',
+    'If wheeze or chest tightness rises instead of settling, back off.'
+  ];
+  return [
+    'Set up carefully before the first rep.',
+    'Move smoothly and keep the operated shoulder quiet.',
+    'If symptoms rise across the set, regress the next exposure.'
+  ];
+}
+
 function openExerciseGuide(exercise) {
   const guide = getExerciseGuide(exercise);
   const overlay = document.getElementById('exerciseOverlay');
   const content = document.getElementById('guideContent');
   const cueList = exercise.cues.map((cue) => `<li>${escapeHtml(cue)}</li>`).join('');
+  const checklist = getExerciseChecklist(exercise).map((item) => `<li>${escapeHtml(item)}</li>`).join('');
   content.innerHTML = `
     <p class="eyebrow">Technique guide</p>
     <h2>${escapeHtml(exercise.name)}</h2>
@@ -1262,6 +1336,12 @@ function openExerciseGuide(exercise) {
       <div><strong>2 · Move</strong><span>${escapeHtml(guide.execution)}</span></div>
       <div><strong>3 · Breathe</strong><span>${escapeHtml(guide.breathing)}</span></div>
     </div>
+    <section class="guide-section guide-grid guide-grid-three">
+      <div><h3>What it's for</h3><p>${escapeHtml(guide.purpose)}</p></div>
+      <div><h3>What you should feel</h3><p>${escapeHtml(getExerciseFeel(exercise))}</p></div>
+      <div><h3>Tempo</h3><p>${escapeHtml(getExerciseTempo(exercise))}</p></div>
+    </section>
+    <section class="guide-section"><h3>Position checklist</h3><ul>${checklist}</ul></section>
     <section class="guide-section"><h3>Key cues</h3><ul>${cueList}</ul></section>
     <section class="guide-section"><h3>Common mistake</h3><p>${escapeHtml(guide.mistake)}</p></section>
     <section class="guide-section guide-grid">
@@ -1282,100 +1362,130 @@ function closeExerciseGuide() {
 
 function makeDiagram(kind) {
   const c = '#101a17';
+  const c2 = '#566760';
   const a = '#879e16';
   const soft = '#dfe5dd';
-  const line = (x1,y1,x2,y2,extra='') => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="4" stroke-linecap="round" ${extra}/>`;
-  const head = (x,y) => `<circle cx="${x}" cy="${y}" r="6" fill="none" stroke="${c}" stroke-width="4"/>`;
-  const arrow = (x1,y1,x2,y2) => `<path d="M${x1},${y1} L${x2},${y2}" stroke="${a}" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)" fill="none"/>`;
-  const base = `<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="${a}"/></marker></defs>`;
-  let art = '';
+  const bg = '#eef3e8';
+  const line = (x1,y1,x2,y2,color=c,width=4,extra='') => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${width}" stroke-linecap="round" ${extra}/>`;
+  const circle = (cx,cy,r=6,color=c,width=4,fill='none',extra='') => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${color}" stroke-width="${width}" ${extra}/>`;
+  const rect = (x,y,w,h,fill=soft,rx=4,extra='') => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${fill}" ${extra}/>`;
+  const path = (d,color=c,width=4,extra='') => `<path d="${d}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
+  const person = ({ head, torso, arms = [], legs = [] }, color = c) => [
+    circle(head[0], head[1], 6, color),
+    line(...torso, color),
+    ...arms.map((seg) => line(...seg, color)),
+    ...legs.map((seg) => line(...seg, color))
+  ].join('');
+  const frame = (content, start = true) => `<g class="pose ${start ? 'pose-start' : 'pose-end'}">${content}<animate attributeName="opacity" values="${start ? '1;1;0;0;1' : '0;0;1;1;0'}" dur="2.4s" repeatCount="indefinite"/></g>`;
+  const motionArrow = (d) => `<path d="${d}" fill="none" stroke="${a}" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)" stroke-dasharray="7 6"><animate attributeName="stroke-dashoffset" from="26" to="0" dur="1.05s" repeatCount="indefinite"/></path>`;
+  const defs = `<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="${a}"/></marker></defs>`;
+  const wrap = (start, end, motions = '', extras = '') => `<svg class="motion-diagram" viewBox="0 0 140 100" role="img" aria-label="Animated exercise guide" xmlns="http://www.w3.org/2000/svg">${defs}<rect x="0" y="0" width="140" height="100" rx="18" fill="${bg}"/>${extras}${frame(start, true)}${frame(end, false)}${motions}</svg>`;
+
+  const standingStart = person({ head:[46,18], torso:[46,25,46,56], arms:[[46,38,30,47],[46,38,62,47]], legs:[[46,56,36,83],[46,56,56,83]] });
+  const standingArmsUp = person({ head:[46,18], torso:[46,25,46,56], arms:[[46,34,38,12],[46,34,58,12]], legs:[[46,56,36,83],[46,56,56,83]] });
+  const squatPose = person({ head:[50,18], torso:[50,25,50,49], arms:[[50,35,36,46],[50,35,64,46]], legs:[[50,49,35,64],[35,64,24,82],[50,49,66,64],[66,64,77,82]] });
+  const hingePose = person({ head:[43,23], torso:[46,28,63,50], arms:[[51,37,36,54],[51,37,68,45]], legs:[[63,50,48,82],[63,50,76,82]] });
+  const lungePose = person({ head:[46,18], torso:[46,25,46,51], arms:[[46,35,33,46],[46,35,61,46]], legs:[[46,51,30,65],[30,65,21,83],[46,51,69,65],[69,65,83,65]] });
+  const lateralPose = person({ head:[49,20], torso:[49,27,49,52], arms:[[49,37,29,45],[49,37,69,45]], legs:[[49,52,27,67],[27,67,16,82],[49,52,80,64],[80,64,102,64]] });
+  const pushHigh = person({ head:[75,40], torso:[69,44,42,54], arms:[[69,44,95,50]], legs:[[42,54,18,70],[42,54,67,71]] });
+  const pushLow = person({ head:[73,50], torso:[67,54,40,60], arms:[[67,54,94,57]], legs:[[40,60,18,74],[40,60,65,75]] }, c2);
+  const quadrupedNeutral = [circle(28,40,6,c), path('M35 44 Q52 46 66 48', c), line(39,46,32,69,c), line(62,48,69,69,c), line(39,45,17,55,c), line(63,48,84,41,c)].join('');
+  const quadrupedRound = [circle(28,40,6,c2), path('M35 48 Q52 38 68 47', c2), line(39,49,32,69,c2), line(64,47,71,68,c2), line(39,47,17,58,c2), line(63,47,84,38,c2)].join('');
+  const birdDogStart = quadrupedNeutral;
+  const birdDogEnd = [circle(28,40,6,c2), path('M35 44 Q52 46 66 48', c2), line(39,46,32,69,c2), line(62,48,69,69,c2), line(37,45,16,32,c2), line(65,49,88,39,c2)].join('');
+  const deadBugStart = [line(16,72,92,72,c), circle(29,57,6,c), line(35,62,58,68,c), line(58,68,78,58,c), line(58,68,77,80,c), line(35,60,21,46,c)].join('');
+  const deadBugEnd = [line(16,72,92,72,c2), circle(29,57,6,c2), line(35,62,56,69,c2), line(56,69,74,47,c2), line(56,69,74,81,c2), line(35,60,18,35,c2)].join('');
+  const hip9090A = person({ head:[48,18], torso:[48,25,48,49], arms:[[48,35,32,47],[48,35,64,47]], legs:[[48,49,29,63],[29,63,42,79],[48,49,68,63],[68,63,57,80]] });
+  const hip9090B = person({ head:[48,18], torso:[48,25,48,49], arms:[[48,35,32,47],[48,35,64,47]], legs:[[48,49,36,65],[36,65,24,80],[48,49,61,65],[61,65,75,78]] }, c2);
+  const hangStart = [line(20,14,82,14,c), person({ head:[51,30], torso:[51,37,51,61], arms:[[51,42,31,15],[51,42,71,15]], legs:[[51,61,40,84],[51,61,62,84]] }), rect(28,82,44,5,soft,2)].join('');
+  const hangKnees = [line(20,14,82,14,c2), person({ head:[51,30], torso:[51,37,51,60], arms:[[51,42,31,15],[51,42,71,15]], legs:[[51,60,41,72],[51,60,63,72]] }, c2), rect(28,82,44,5,soft,2)].join('');
+  const runA = person({ head:[46,20], torso:[48,27,58,49], arms:[[52,35,32,43],[55,37,74,29]], legs:[[58,49,38,63],[38,63,22,82],[58,49,79,61],[79,61,93,80]] });
+  const runB = person({ head:[49,20], torso:[51,27,59,48], arms:[[53,36,72,44],[55,34,36,27]], legs:[[59,48,43,61],[43,61,28,79],[59,48,79,60],[79,60,93,40]] }, c2);
+  const cycleA = [circle(42,66,18,c), circle(95,66,18,c), circle(42,66,5,c,3,'#fff'), circle(95,66,5,c,3,'#fff'), person({ head:[60,23], torso:[60,30,70,48], arms:[[60,38,86,36]], legs:[[70,48,45,64],[70,48,96,64]] })].join('');
+  const cycleB = [circle(42,66,18,c2), circle(95,66,18,c2), circle(42,66,5,c2,3,'#fff'), circle(95,66,5,c2,3,'#fff'), person({ head:[60,23], torso:[60,30,71,47], arms:[[60,38,86,36]], legs:[[71,47,51,76],[71,47,97,55]] }, c2)].join('');
+  const supportA = [line(20,44,92,44,c), person({ head:[56,18], torso:[56,25,56,48], arms:[[43,31,34,44],[69,31,78,44]], legs:[[56,48,45,76],[56,48,68,76]] })].join('');
+  const supportB = [line(20,44,92,44,c2), person({ head:[56,18], torso:[56,25,56,46], arms:[[43,30,34,44],[69,30,78,44]], legs:[[56,46,48,74],[56,46,66,74]] }, c2)].join('');
+
   switch (kind) {
     case 'breathing':
-      art = `${line(15,65,70,65)}${head(27,49)}${line(33,55,55,63)}${line(55,63,71,48)}${line(55,63,74,72)}${arrow(45,43,45,57)}${arrow(54,43,54,57)}`; break;
-    case 'catcow':
-      art = `${head(28,40)}<path d="M34 45 Q55 30 72 46" fill="none" stroke="${c}" stroke-width="4" stroke-linecap="round"/>${line(38,47,32,69)}${line(68,47,72,69)}${arrow(52,24,52,37)}${head(108,42)}<path d="M114 47 Q135 62 153 46" fill="none" stroke="${c}" stroke-width="4" stroke-linecap="round"/>${line(118,50,112,70)}${line(150,49,155,70)}${arrow(134,69,134,57)}`; break;
-    case 'wallslide':
-      art = `<rect x="78" y="8" width="5" height="80" rx="2" fill="${soft}"/>${head(48,25)}${line(48,32,48,58)}${line(48,58,35,82)}${line(48,58,59,82)}${line(48,40,74,51)}${line(74,51,78,31)}${arrow(69,58,69,27)}`; break;
-    case 'wallpush':
-      art = `<rect x="78" y="8" width="5" height="80" rx="2" fill="${soft}"/>${head(35,25)}${line(39,31,53,57)}${line(53,57,38,83)}${line(53,57,66,82)}${line(45,39,78,43)}${arrow(58,27,70,37)}`; break;
-    case 'squat':
-      art = `${head(49,19)}${line(49,26,49,50)}${line(49,34,35,47)}${line(49,34,63,47)}${line(49,50,35,65)}${line(35,65,24,80)}${line(49,50,65,65)}${line(65,65,76,80)}${arrow(93,22,93,70)}`; break;
-    case 'deadbug':
-      art = `${line(15,72,80,72)}${head(27,58)}${line(33,63,54,69)}${line(50,66,71,48)}${line(52,68,68,80)}${line(39,61,26,39)}${arrow(75,40,61,51)}`; break;
-    case 'standing':
-      art = `${head(48,20)}${line(48,27,48,56)}${line(48,36,31,49)}${line(48,36,66,48)}${line(48,56,37,84)}${line(48,56,60,84)}${arrow(72,30,87,43)}${arrow(87,43,74,55)}`; break;
-    case 'hip90':
-      art = `${head(48,20)}${line(48,27,48,51)}${line(48,37,31,48)}${line(48,37,66,48)}${line(48,51,29,65)}${line(29,65,43,79)}${line(48,51,68,64)}${line(68,64,58,80)}${arrow(93,68,120,68)}`; break;
-    case 'hinge':
-      art = `${head(42,24)}${line(45,30,64,52)}${line(64,52,48,82)}${line(64,52,76,82)}${line(51,38,35,57)}${arrow(87,28,102,47)}`; break;
-    case 'couch':
-      art = `<rect x="83" y="48" width="8" height="38" rx="2" fill="${soft}"/>${head(49,18)}${line(49,25,49,52)}${line(49,35,35,49)}${line(49,52,30,65)}${line(30,65,30,83)}${line(49,52,69,66)}${line(69,66,85,52)}${arrow(64,28,64,16)}`; break;
-    case 'stretch':
-      art = `<rect x="73" y="52" width="44" height="7" rx="3" fill="${soft}"/>${head(42,26)}${line(47,31,62,49)}${line(62,49,74,52)}${line(62,49,95,52)}${line(47,38,34,67)}${line(34,67,25,83)}${line(34,67,48,83)}${arrow(48,18,67,37)}`; break;
-    case 'band':
-      art = `${head(48,19)}${line(48,26,48,57)}${line(48,57,38,84)}${line(48,57,59,84)}${line(48,38,34,48)}${line(48,38,62,48)}<path d="M34 48 Q48 61 62 48" fill="none" stroke="${a}" stroke-width="3" stroke-dasharray="4 3"/>${arrow(65,46,76,37)}`; break;
-    case 'chestopen':
-      art = `<rect x="80" y="8" width="5" height="80" rx="2" fill="${soft}"/>${head(48,19)}${line(48,26,48,58)}${line(48,58,38,84)}${line(48,58,59,84)}${line(48,38,80,38)}${line(48,39,36,52)}${arrow(34,28,20,42)}`; break;
-    case 'frog':
-      art = `${head(50,26)}${line(50,33,50,55)}${line(50,42,34,54)}${line(50,42,67,54)}${line(50,55,26,68)}${line(26,68,14,82)}${line(50,55,75,68)}${line(75,68,88,82)}${arrow(50,17,50,7)}`; break;
-    case 'lunge':
-      art = `${head(47,18)}${line(47,25,47,51)}${line(47,35,32,47)}${line(47,35,64,47)}${line(47,51,29,65)}${line(29,65,20,83)}${line(47,51,70,65)}${line(70,65,83,65)}${arrow(68,79,68,55)}`; break;
-    case 'quadruped':
-      art = `${head(27,38)}${line(34,43,67,48)}${line(39,46,32,69)}${line(63,48,72,69)}${line(67,48,80,60)}${arrow(82,35,98,50)}`; break;
-    case 'birddog':
-      art = `${head(28,41)}${line(35,45,65,49)}${line(40,48,34,70)}${line(62,49,69,70)}${line(65,49,88,39)}${line(37,45,15,32)}${arrow(91,35,105,29)}`; break;
-    case 'downdog':
-      art = `<rect x="88" y="48" width="45" height="7" rx="3" fill="${soft}"/>${head(72,38)}${line(67,42,48,61)}${line(48,61,28,82)}${line(48,61,70,82)}${line(69,44,90,51)}${arrow(48,35,48,52)}`; break;
-    case 'transition':
-      art = `${head(34,18)}${line(34,25,34,53)}${line(34,53,25,82)}${line(34,53,47,82)}${arrow(64,50,87,50)}${head(116,30)}${line(116,37,116,59)}${line(116,59,96,75)}${line(116,59,134,75)}`; break;
-    case 'pushup':
-      art = `<rect x="95" y="48" width="44" height="7" rx="3" fill="${soft}"/>${head(74,41)}${line(68,45,42,55)}${line(42,55,18,70)}${line(68,46,96,51)}${line(42,55,66,71)}${arrow(78,30,78,44)}`; break;
-    case 'landmine':
-      art = `${head(42,20)}${line(42,27,42,56)}${line(42,56,29,82)}${line(42,56,56,72)}${line(56,72,72,72)}${line(42,39,65,28)}${line(65,28,110,9)}${arrow(74,34,94,25)}`; break;
-    case 'press':
-      art = `${head(43,20)}${line(43,27,43,57)}${line(43,57,33,83)}${line(43,57,54,83)}${line(43,39,67,37)}${arrow(67,37,93,31)}`; break;
-    case 'pull': case 'row':
-      art = `${head(48,20)}${line(48,27,48,57)}${line(48,57,37,84)}${line(48,57,60,84)}${line(48,38,23,36)}${line(48,38,73,36)}${arrow(18,36,38,36)}${arrow(78,36,58,36)}`; break;
-    case 'pressdown':
-      art = `${head(48,19)}${line(48,26,48,58)}${line(48,58,37,84)}${line(48,58,59,84)}${line(48,37,36,51)}${line(48,37,60,51)}${arrow(36,52,36,70)}${arrow(60,52,60,70)}`; break;
-    case 'sideplank':
-      art = `${head(28,40)}${line(34,44,69,59)}${line(69,59,92,70)}${line(38,46,27,68)}${line(69,59,88,51)}${arrow(52,69,52,52)}`; break;
-    case 'legmachine':
-      art = `<rect x="20" y="58" width="42" height="8" rx="3" fill="${soft}"/><rect x="58" y="45" width="8" height="36" rx="3" fill="${soft}"/>${head(38,38)}${line(42,43,55,57)}${line(55,57,80,57)}${line(80,57,99,73)}${arrow(98,72,112,58)}`; break;
-    case 'pulldown':
-      art = `${head(48,26)}${line(48,33,48,62)}${line(48,62,37,84)}${line(48,62,59,84)}${line(48,42,28,21)}${line(48,42,68,21)}${line(20,13,76,13)}${arrow(28,19,35,34)}${arrow(68,19,61,34)}`; break;
-    case 'yraise':
-      art = `${head(48,22)}${line(48,29,48,58)}${line(48,58,37,84)}${line(48,58,59,84)}${line(48,39,27,18)}${line(48,39,69,18)}${arrow(24,31,18,19)}${arrow(72,31,78,19)}`; break;
-    case 'curl':
-      art = `${head(48,19)}${line(48,26,48,58)}${line(48,58,37,84)}${line(48,58,59,84)}${line(48,38,34,55)}${line(48,38,62,55)}${arrow(31,60,31,44)}${arrow(65,60,65,44)}`; break;
-    case 'hang':
-      art = `${line(20,12,78,12)}${head(49,31)}${line(49,37,49,62)}${line(49,62,38,84)}${line(49,62,60,84)}${line(49,42,29,14)}${line(49,42,69,14)}<rect x="27" y="80" width="44" height="6" rx="2" fill="${soft}"/>${arrow(86,22,86,49)}`; break;
-    case 'horse':
-      art = `${head(48,18)}${line(48,25,48,52)}${line(48,35,27,45)}${line(48,35,69,45)}${line(48,52,25,63)}${line(25,63,18,82)}${line(48,52,72,63)}${line(72,63,79,82)}${arrow(91,25,91,62)}`; break;
-    case 'pigeon':
-      art = `${head(53,23)}${line(53,30,67,49)}${line(67,49,45,61)}${line(45,61,24,61)}${line(67,49,88,67)}${line(88,67,107,72)}${arrow(48,19,64,35)}`; break;
-    case 'crawl':
-      art = `${head(27,40)}${line(34,44,64,49)}${line(39,47,32,68)}${line(61,49,69,68)}${line(34,45,17,56)}${line(64,49,82,39)}${arrow(88,48,111,48)}`; break;
-    case 'stepup':
-      art = `<rect x="67" y="59" width="45" height="25" rx="3" fill="${soft}"/>${head(43,19)}${line(43,26,43,54)}${line(43,54,31,82)}${line(43,54,69,62)}${line(43,37,29,49)}${line(43,37,58,49)}${arrow(88,49,88,29)}`; break;
-    case 'lateral':
-      art = `${head(49,20)}${line(49,27,49,53)}${line(49,38,29,46)}${line(49,38,69,46)}${line(49,53,26,68)}${line(26,68,14,82)}${line(49,53,79,65)}${line(79,65,101,65)}${arrow(94,38,113,38)}`; break;
-    case 'shouldertap':
-      art = `${head(28,39)}${line(35,44,66,49)}${line(40,47,34,69)}${line(63,49,70,69)}${line(37,45,56,35)}${arrow(55,31,67,39)}`; break;
-    case 'hollow':
-      art = `${line(20,72,92,72)}${head(32,55)}${line(38,60,62,68)}${line(62,68,84,57)}${line(62,68,83,80)}${line(38,58,20,45)}${arrow(66,53,76,43)}`; break;
-    case 'support':
-      art = `${line(20,44,92,44)}${head(56,18)}${line(56,25,56,48)}${line(56,48,45,76)}${line(56,48,68,76)}${line(43,32,34,44)}${line(69,32,78,44)}${arrow(56,48,56,34)}`; break;
-    case 'kneeraise':
-      art = `${line(20,12,82,12)}${head(51,30)}${line(51,37,51,61)}${line(51,42,31,14)}${line(51,42,71,14)}${line(51,61,38,74)}${line(51,61,67,74)}${arrow(67,78,55,60)}`; break;
-    case 'run':
-      art = `${head(46,20)}${line(48,27,58,49)}${line(58,49,38,63)}${line(38,63,22,82)}${line(58,49,78,61)}${line(78,61,93,80)}${line(52,35,30,43)}${line(55,37,76,29)}${arrow(95,27,120,27)}`; break;
-    case 'cardio':
-      art = `<circle cx="45" cy="64" r="20" fill="none" stroke="${c}" stroke-width="4"/><circle cx="96" cy="64" r="20" fill="none" stroke="${c}" stroke-width="4"/>${head(60,23)}${line(60,30,70,48)}${line(70,48,45,64)}${line(70,48,96,64)}${line(60,38,86,36)}${arrow(112,27,130,27)}`; break;
+      return wrap(
+        [line(16,72,92,72,c), circle(28,57,6,c), line(34,62,57,68,c), line(57,68,78,55,c), line(57,68,79,80,c), `<ellipse cx="51" cy="61" rx="9" ry="4" fill="rgba(135,158,22,.18)" stroke="${a}" stroke-width="2"/>`].join(''),
+        [line(16,72,92,72,c2), circle(28,57,6,c2), line(34,62,57,68,c2), line(57,68,78,55,c2), line(57,68,79,80,c2), `<ellipse cx="51" cy="61" rx="13" ry="7" fill="rgba(135,158,22,.18)" stroke="${a}" stroke-width="2"/>`].join(''),
+        motionArrow('M106 63 C118 56, 118 44, 106 36')
+      );
+    case 'catcow': return wrap(quadrupedNeutral, quadrupedRound, motionArrow('M102 34 C112 40, 112 56, 102 62'));
+    case 'wallslide': return wrap(
+      rect(96,8,6,82,soft,2) + person({ head:[50,24], torso:[50,31,50,58], arms:[[50,40,73,49],[73,49,96,46]], legs:[[50,58,39,84],[50,58,61,84]] }),
+      rect(96,8,6,82,soft,2) + person({ head:[50,24], torso:[50,31,50,58], arms:[[50,38,76,34],[76,34,96,24]], legs:[[50,58,39,84],[50,58,61,84]] }, c2),
+      motionArrow('M83 52 L83 22')
+    );
+    case 'wallpush': return wrap(
+      rect(98,8,6,82,soft,2) + person({ head:[38,25], torso:[42,31,55,57], arms:[[45,39,98,43]], legs:[[55,57,39,84],[55,57,67,84]] }),
+      rect(98,8,6,82,soft,2) + person({ head:[34,25], torso:[38,31,53,57], arms:[[41,39,98,43]], legs:[[53,57,37,84],[53,57,65,84]] }, c2),
+      motionArrow('M61 24 C74 32, 74 45, 61 53')
+    );
+    case 'squat': case 'horse': return wrap(standingStart, squatPose, motionArrow('M101 24 L101 72'));
+    case 'deadbug': case 'hollow': return wrap(deadBugStart, deadBugEnd, motionArrow('M80 48 L69 38'));
+    case 'standing': return wrap(standingStart, person({ head:[46,18], torso:[46,25,46,56], arms:[[46,38,30,47],[46,38,62,47]], legs:[[46,56,37,84],[46,56,69,70]] }, c2), motionArrow('M78 30 C92 36, 92 50, 78 56'));
+    case 'hip90': return wrap(hip9090A, hip9090B, motionArrow('M92 69 C105 61, 118 61, 128 69'));
+    case 'hinge': return wrap(standingStart, hingePose, motionArrow('M93 24 C106 32, 106 46, 93 54'));
+    case 'couch': return wrap(
+      rect(92,48,8,38,soft,2) + person({ head:[51,18], torso:[51,25,51,51], arms:[[51,35,37,47],[51,35,67,46]], legs:[[51,51,31,64],[31,64,31,82],[51,51,71,64],[71,64,92,52]] }),
+      rect(92,48,8,38,soft,2) + person({ head:[51,16], torso:[51,23,51,50], arms:[[51,33,37,45],[51,33,67,45]], legs:[[51,50,31,63],[31,63,31,82],[51,50,71,63],[71,63,92,52]] }, c2),
+      motionArrow('M70 26 L70 14')
+    );
+    case 'stretch': case 'chestopen': case 'pigeon': return wrap(
+      rect(82,52,44,7,soft,3) + person({ head:[46,24], torso:[50,30,64,49], arms:[[50,38,36,67]], legs:[[64,49,75,52],[64,49,98,52]] }),
+      rect(82,52,44,7,soft,3) + person({ head:[42,22], torso:[47,28,61,47], arms:[[47,36,32,68]], legs:[[61,47,75,52],[61,47,98,52]] }, c2),
+      motionArrow('M49 20 C58 28, 64 34, 72 40')
+    );
+    case 'band': return wrap(
+      person({ head:[48,19], torso:[48,26,48,57], arms:[[48,38,34,49],[48,38,58,50]], legs:[[48,57,38,84],[48,57,58,84]] }) + path('M34 49 Q48 61 58 50', a, 3, 'stroke-dasharray="4 4"'),
+      person({ head:[48,19], torso:[48,26,48,57], arms:[[48,38,32,44],[48,38,68,45]], legs:[[48,57,38,84],[48,57,58,84]] }, c2) + path('M32 44 Q48 59 68 45', a, 3, 'stroke-dasharray="4 4"'),
+      motionArrow('M62 45 L78 38')
+    );
+    case 'frog': case 'transition': return wrap(hip9090A, person({ head:[34,18], torso:[34,25,34,53], arms:[[34,36,22,46],[34,36,46,46]], legs:[[34,53,25,82],[34,53,47,82]] }, c2) + motionArrow('M62 52 L85 52'), '');
+    case 'lunge': case 'stepup': return wrap(standingStart + (kind === 'stepup' ? rect(74,59,38,23,soft,3) : ''), lungePose + (kind === 'stepup' ? rect(74,59,38,23,soft,3) : ''), motionArrow(kind === 'stepup' ? 'M93 49 L93 28' : 'M70 78 L70 54'));
+    case 'quadruped': case 'crawl': case 'shouldertap': return wrap(quadrupedNeutral, birdDogEnd, motionArrow('M86 48 L110 48'));
+    case 'birddog': return wrap(birdDogStart, birdDogEnd, motionArrow('M91 35 L106 28'));
+    case 'downdog': return wrap(
+      rect(90,48,42,7,soft,3) + [circle(74,38,6,c), line(68,42,48,61,c), line(48,61,28,82,c), line(48,61,70,82,c), line(70,44,90,51,c)].join(''),
+      rect(90,48,42,7,soft,3) + [circle(70,34,6,c2), line(64,38,48,58,c2), line(48,58,28,82,c2), line(48,58,73,82,c2), line(66,40,90,51,c2)].join(''),
+      motionArrow('M49 35 L49 52')
+    );
+    case 'pushup': return wrap(pushHigh, pushLow, motionArrow('M81 30 L81 46'));
+    case 'landmine': return wrap(
+      person({ head:[42,20], torso:[42,27,42,56], arms:[[42,39,65,28],[65,28,108,10]], legs:[[42,56,29,82],[42,56,57,72],[57,72,73,72]] }) + line(65,28,110,9,a,3),
+      person({ head:[42,20], torso:[42,27,42,56], arms:[[42,39,61,33],[61,33,95,18]], legs:[[42,56,29,82],[42,56,57,72],[57,72,73,72]] }, c2) + line(61,33,97,18,a,3),
+      motionArrow('M74 34 L95 24')
+    );
+    case 'press': case 'pressdown': return wrap(
+      person({ head:[46,19], torso:[46,26,46,57], arms:[[46,38,62,40]], legs:[[46,57,36,84],[46,57,56,84]] }),
+      person({ head:[46,19], torso:[46,26,46,57], arms:[[46,34,66,28]], legs:[[46,57,36,84],[46,57,56,84]] }, c2),
+      motionArrow(kind === 'pressdown' ? 'M61 50 L61 69' : 'M64 38 L90 31')
+    );
+    case 'pull': case 'row': case 'pulldown': case 'yraise': case 'curl': return wrap(
+      person({ head:[48,20], torso:[48,27,48,57], arms: kind === 'pulldown' ? [[48,42,28,21],[48,42,68,21]] : [[48,38,23,36],[48,38,73,36]], legs:[[48,57,37,84],[48,57,60,84]] }) + (kind === 'pulldown' ? line(20,13,76,13,c,4) : ''),
+      person({ head:[48,20], torso:[48,27,48,57], arms: kind === 'curl' ? [[48,38,34,53],[48,38,62,53]] : kind === 'yraise' ? [[48,39,28,18],[48,39,68,18]] : kind === 'pulldown' ? [[48,42,36,34],[48,42,60,34]] : [[48,38,34,38],[48,38,62,38]], legs:[[48,57,37,84],[48,57,60,84]] }, c2) + (kind === 'pulldown' ? line(20,13,76,13,c2,4) : ''),
+      motionArrow(kind === 'curl' ? 'M31 60 L31 44' : kind === 'yraise' ? 'M72 31 L78 19' : 'M78 36 L58 36')
+    );
+    case 'sideplank': return wrap(
+      [circle(28,40,6,c), line(34,44,69,59,c), line(69,59,92,70,c), line(38,46,27,68,c), line(69,59,88,51,c)].join(''),
+      [circle(28,37,6,c2), line(34,41,69,55,c2), line(69,55,93,66,c2), line(38,43,27,65,c2), line(69,55,89,47,c2)].join(''),
+      motionArrow('M52 69 L52 52')
+    );
+    case 'legmachine': return wrap(
+      rect(20,58,42,8,soft,3) + rect(58,45,8,36,soft,3) + person({ head:[38,38], torso:[42,43,55,57], arms:[[42,48,26,55]], legs:[[55,57,80,57],[80,57,99,73]] }),
+      rect(20,58,42,8,soft,3) + rect(58,45,8,36,soft,3) + person({ head:[38,38], torso:[42,43,55,57], arms:[[42,48,26,55]], legs:[[55,57,80,57],[80,57,101,58]] }, c2),
+      motionArrow('M98 72 L112 58')
+    );
+    case 'hang': case 'kneeraise': return wrap(hangStart, kind === 'kneeraise' ? hangKnees : [line(20,14,82,14,c2), person({ head:[51,30], torso:[51,37,51,61], arms:[[51,42,31,15],[51,42,71,15]], legs:[[51,61,42,82],[51,61,60,82]] }, c2), rect(28,82,44,5,soft,2)].join(''), motionArrow(kind === 'kneeraise' ? 'M67 78 L55 60' : 'M92 25 C92 36, 92 48, 92 58'));
+    case 'support': return wrap(supportA, supportB, motionArrow('M56 48 L56 34'));
+    case 'run': return wrap(runA, runB, motionArrow('M95 27 L121 27'));
+    case 'cardio': return wrap(cycleA, cycleB, motionArrow('M111 28 L128 28'));
     default:
-      art = `${head(48,20)}${line(48,27,48,57)}${line(48,38,31,49)}${line(48,38,65,49)}${line(48,57,37,84)}${line(48,57,59,84)}${arrow(78,49,101,49)}`;
+      return wrap(standingStart, standingArmsUp, motionArrow('M74 45 L98 45'));
   }
-  return `<svg viewBox="0 0 140 100" role="img" aria-label="Position guide" xmlns="http://www.w3.org/2000/svg">${base}${art}</svg>`;
 }
 
 function openTimer(seconds = 90) {
