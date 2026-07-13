@@ -1,4 +1,4 @@
-const CACHE_NAME = 'move-strong-rehab-v1.0.0';
+const CACHE_NAME = 'move-strong-rehab-v1.4.0';
 const APP_SHELL = [
   './',
   './index.html',

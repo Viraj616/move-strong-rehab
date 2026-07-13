@@ -20,3 +20,6 @@ MOVE STRONG REHAB — SIMPLE SETUP
     use Settings > Export backup.
 
 For fuller instructions and six-week update steps, open README.md.
+
+
+V1.1 note: the app now includes a Home kit tab for travel days. Use it instead of the gym evening session, not as an additional hard workout.

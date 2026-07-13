@@ -1,15 +1,20 @@
 # Move Strong Rehab
 
-A local-first six-week Progressive Web App (PWA) containing the six-day Strength Side-inspired movement and post-clavicle-ORIF strengthening plan.
+A local-first six-week Progressive Web App (PWA) containing the six-day Strength Side-inspired movement and post-clavicle-ORIF strengthening plan, now with gym and travel-friendly home-kit options plus calisthenics-skill, running and muscle-up-readiness tracking.
 
 ## Included
 
-- Six training days, each with a 10- or 20-minute morning session and a longer evening session
+- Six training days, each with a 10- or 20-minute morning session, a longer gym evening session, and a home-kit replacement session for travel days
 - Local position-guide diagrams for every exercise
 - Text technique cues and clavicle-specific precautions
-- YouTube search links as an optional fallback only
+- Tap-to-open detailed exercise technique guides
+- Larger offline exercise diagrams
 - Sets, repetitions, loads/levels and exercise-completion tracking
 - Rest timer
+- Home-kit workouts using bands, pull-up bar, 2 × 5 kg dumbbells, and a 10 kg kettlebell
+- Skill tabs for pull-up practice, active hangs, hollow holds, straight-bar support and muscle-up prerequisites
+- Run tabs for easy run/walk, Zone 2 run/walk and controlled intervals
+- Goals page for muscle-up readiness and running benchmarks
 - Pain-during, pain-after and next-morning response tracking
 - Six-week completion view
 - JSON backup and restore
@@ -81,17 +86,31 @@ The public repository will contain the app code and generic exercise plan. Your 
 6. Open **Move Strong** from the Android home screen.
 7. In the app, open **Settings** and set the programme start date, operated side, and default morning duration.
 
-The plan, diagrams and saved logs work offline after the app has loaded. The **Video fallback** buttons open YouTube and require an internet connection.
+The plan, diagrams, detailed technique guides and saved logs work offline after the app has loaded. YouTube fallback links have been removed from v1.4.
 
 ## 7. First-use checklist
 
-1. Open **Plan** and inspect all six days.
-2. Open Day 1 morning and confirm the exercise cards and diagrams load.
+1. Open **Plan** and inspect all six days, including the new **Home kit** option.
+2. Open Day 1 morning, Day 1 evening gym, and Day 1 home kit to confirm the exercise cards and diagrams load.
 3. Enter a test set, close the app, reopen it and confirm the entry remains.
 4. Open **Settings → Export backup** and save the JSON file somewhere safe, such as Google Drive or OneDrive.
 5. Delete the test entry if needed and begin Week 1.
 
 ---
+
+# Using the Home kit tab
+
+The **Home kit** session is a replacement for the gym evening session when travelling. Do not complete both as hard sessions on the same day.
+
+Available kit assumed:
+
+- Resistance bands
+- Pull-up bar
+- 2 × 5 kg dumbbells
+- 10 kg kettlebell
+
+The pull-up bar is used only for supported hanging and band anchoring in this block. Full pull-ups, chin-ups and passive dead hangs remain excluded unless cleared and earned through symptom-free progression.
+
 
 # Updating the programme after six weeks
 

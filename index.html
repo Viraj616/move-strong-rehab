@@ -28,6 +28,7 @@
       <button data-route="home" class="nav-item active"><span>⌂</span><small>Home</small></button>
       <button data-route="plan" class="nav-item"><span>▦</span><small>Plan</small></button>
       <button data-route="progress" class="nav-item"><span>↗</span><small>Progress</small></button>
+      <button data-route="goals" class="nav-item"><span>◎</span><small>Goals</small></button>
       <button data-route="settings" class="nav-item"><span>⚙</span><small>Settings</small></button>
     </nav>
   </div>
@@ -43,6 +44,13 @@
         <button id="timerPlus" class="secondary-btn">+15 sec</button>
       </div>
       <button id="timerClose" class="text-btn">Close timer</button>
+    </div>
+  </div>
+
+  <div id="exerciseOverlay" class="guide-overlay hidden" role="dialog" aria-modal="true" aria-label="Exercise technique guide">
+    <div class="guide-card">
+      <button id="guideClose" class="guide-close" aria-label="Close exercise guide">×</button>
+      <div id="guideContent"></div>
     </div>
   </div>
 
