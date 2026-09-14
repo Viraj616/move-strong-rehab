@@ -4,11 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#101a17" />
-  <meta name="description" content="A local-first six-week movement and clavicle rebuilding programme." />
+  <meta name="description" content="Your daily rhythm for training, movement and recovery. A private, offline-capable health planner." />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=2.0.0" />
+  <link rel="stylesheet" href="./health-os.css?v=2.0.0" />
   <title>Move Strong Rehab</title>
 </head>
 <body>
@@ -16,7 +17,7 @@
     <header class="topbar">
       <button id="backBtn" class="icon-btn hidden" aria-label="Go back">←</button>
       <div class="brand-block">
-        <span class="eyebrow">6-week movement block</span>
+        <span class="eyebrow">Your personal health OS</span>
         <h1 id="pageTitle">Move Strong Rehab</h1>
       </div>
       <button id="installBtn" class="install-btn hidden">Install</button>
@@ -25,11 +26,11 @@
     <main id="mainContent" class="main-content" aria-live="polite"></main>
 
     <nav id="bottomNav" class="bottom-nav" aria-label="Main navigation">
-      <button data-route="home" class="nav-item active"><span>⌂</span><small>Home</small></button>
-      <button data-route="plan" class="nav-item"><span>▦</span><small>Plan</small></button>
+      <button data-route="home" class="nav-item active"><span>⌂</span><small>Today</small></button>
+      <button data-route="plan" class="nav-item"><span>▦</span><small>Calendar</small></button>
+      <button data-route="train" class="nav-item"><span>◎</span><small>Train</small></button>
       <button data-route="progress" class="nav-item"><span>↗</span><small>Progress</small></button>
-      <button data-route="goals" class="nav-item"><span>◎</span><small>Goals</small></button>
-      <button data-route="settings" class="nav-item"><span>⚙</span><small>Settings</small></button>
+      <button data-route="settings" class="nav-item"><span>⚙</span><small>You</small></button>
     </nav>
   </div>
 
@@ -55,6 +56,8 @@
   </div>
 
   <input id="importInput" type="file" accept="application/json" class="hidden" />
-  <script src="./app.js"></script>
+  <script src="./health-model.js?v=2.0.0"></script>
+  <script src="./app.js?v=2.0.0"></script>
+  <script src="./health-os.js?v=2.0.0"></script>
 </body>
 </html>

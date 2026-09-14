@@ -1,11 +1,11 @@
 {
-  "name": "Move Strong Rehab",
+  "name": "Move Strong · Health OS",
   "short_name": "Move Strong",
-  "description": "A six-week movement, clavicle rebuilding, calisthenics and running transition programme.",
+  "description": "Your daily calendar for training, movement and recovery.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f3f4ef",
+  "background_color": "#f6f7f3",
   "theme_color": "#101a17",
   "orientation": "portrait-primary",
   "icons": [

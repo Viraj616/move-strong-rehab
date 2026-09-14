@@ -1,9 +1,12 @@
-const CACHE_NAME = 'move-strong-rehab-v1.5.0';
+const CACHE_NAME = 'move-strong-rehab-v2.0.0';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css',
-  './app.js',
+  './styles.css?v=2.0.0',
+  './app.js?v=2.0.0',
+  './health-model.js?v=2.0.0',
+  './health-os.js?v=2.0.0',
+  './health-os.css?v=2.0.0',
   './manifest.webmanifest',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png'
@@ -17,10 +20,18 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
-      keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      keys.filter((key) => key.startsWith('move-strong-rehab-') && key !== CACHE_NAME).map((key) => caches.delete(key))
     ))
   );
   self.clients.claim();
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+    const client = clients.find(c => c.url.startsWith(self.registration.scope));
+    return client ? client.focus() : self.clients.openWindow('./');
+  }));
 });
 
 self.addEventListener('fetch', (event) => {

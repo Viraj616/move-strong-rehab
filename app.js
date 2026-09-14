@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '2.0.0';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -387,6 +387,7 @@ const defaultState = () => ({
   logs: {}
 });
 
+let storageReadError = false;
 let state = loadState();
 let route = 'home';
 let selectedWeek = 1;
@@ -410,14 +411,22 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.logs || Array.isArray(parsed.logs)) throw new Error('Invalid stored state');
+    if (parsed.healthOS) parsed.healthOS = HealthModel.normalize(parsed.healthOS);
     const base = defaultState();
     return { ...base, ...parsed, goals: { ...base.goals, ...(parsed.goals || {}) }, logs: parsed.logs || {} };
   } catch {
+    storageReadError = true;
     return defaultState();
   }
 }
 
 function saveState() {
+  if (storageReadError) throw new Error('Original data must be recovered before saving');
+  const existing = localStorage.getItem(STORAGE_KEY);
+  if (existing && !localStorage.getItem('moveStrongRehabPreHealthOSV1')) {
+    localStorage.setItem('moveStrongRehabPreHealthOSV1', existing);
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
@@ -499,6 +508,10 @@ function render() {
   backBtn.classList.toggle('hidden', route !== 'workout');
   bottomNav.classList.toggle('hidden', route === 'workout');
   document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.route === route));
+
+  if (HealthUI.renderRoute()) return;
+  if (route === 'archive') renderPlan();
+  if (route === 'old-progress') renderProgress();
 
   if (route === 'home') renderHome();
   if (route === 'plan') renderPlan();
@@ -1041,12 +1054,21 @@ importInput.addEventListener('change', async (event) => {
   try {
     const parsed = JSON.parse(await file.text());
     const incoming = parsed.state || parsed;
-    if (!incoming || typeof incoming !== 'object' || !incoming.logs) throw new Error('Invalid backup');
-    const base = defaultState();
-    state = { ...base, ...incoming, goals: { ...base.goals, ...(incoming.goals || {}) }, logs: incoming.logs || {} };
-    saveState();
-    showToast('Backup restored');
-    renderSettings();
+    if (!incoming || typeof incoming !== 'object' || !incoming.logs || typeof incoming.logs !== 'object' || Array.isArray(incoming.logs)) throw new Error('Invalid backup');
+    for (const [key, log] of Object.entries(incoming.logs)) {
+      if (!/^w[1-6]-d[1-6]-(morning|evening|home|skill|run)$/.test(key) || !log || typeof log !== 'object' || !log.exercises || typeof log.exercises !== 'object' || Array.isArray(log.exercises)) throw new Error('Invalid workout record');
+    }
+    const restoredHealth = HealthModel.normalize(incoming.healthOS);
+    const hasLocalRecords = Boolean(localStorage.getItem(STORAGE_KEY));
+    const currentHealth = hasLocalRecords ? state.healthOS : undefined;
+    if (storageReadError) throw new Error('Recover original storage first');
+    localStorage.setItem('moveStrongRehabPreImport', JSON.stringify(state));
+    const merged = hasLocalRecords ? { ...incoming, ...state, goals: { ...(incoming.goals || {}), ...state.goals }, logs: { ...incoming.logs, ...state.logs }, healthOS: HealthModel.mergeHealth(restoredHealth, currentHealth) } : { ...defaultState(), ...incoming, healthOS: restoredHealth };
+    // Persist before changing the in-memory view so failed imports cannot appear successful.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    state = merged;
+    showToast('Backup merged; existing records kept');
+    routeTo('settings');
   } catch {
     showToast('That file is not a valid app backup');
   } finally {
@@ -1556,4 +1578,4 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 }
 
-render();
+// health-os.js starts the UI once all modules have loaded.
