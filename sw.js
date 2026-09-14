@@ -1,13 +1,13 @@
-const CACHE_NAME = 'move-strong-rehab-v2.0.1';
+const CACHE_NAME = 'move-strong-rehab-v2.0.2';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=2.0.1',
-  './app.js?v=2.0.1',
-  './health-model.js?v=2.0.1',
-  './exercise-instructions.js?v=2.0.1',
-  './health-os.js?v=2.0.1',
-  './health-os.css?v=2.0.1',
+  './styles.css?v=2.0.2',
+  './app.js?v=2.0.2',
+  './health-model.js?v=2.0.2',
+  './exercise-instructions.js?v=2.0.2',
+  './health-os.js?v=2.0.2',
+  './health-os.css?v=2.0.2',
   './manifest.webmanifest',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png'

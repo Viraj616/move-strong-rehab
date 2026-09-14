@@ -68,7 +68,6 @@ const HealthUI = (() => {
     const day = current(); const plan = M.planFor(health(), selectedDate);
     return header('Training', 'Built for the long run.', 'Controlled strength. Calisthenics foundations. Easy aerobic work.') + dateControls() +
       `<section class="os-feature"><p class="eyebrow">${labelDate(selectedDate)} · ${plan.minutes} MIN</p><h3>${plan.title}</h3><p>${day.workout?.complete ? 'Session complete. Your record is saved.' : 'Record your sets, your effort and your shoulder response.'}</p><div class="hero-actions">${btn('session', day.workout?.complete ? 'Review workout →' : 'Start session →', 'primary-btn')}</div></section>
-      <section class="card section"><h3>Make the plan fit your day</h3><p class="help-text">Changing a session only changes this date. A session with recorded sets must be kept to preserve its history.</p><form id="plan-form" class="os-inline-form">${select('planIndex', 'Session', day.planIndex ?? M.weekday(selectedDate), M.plans.map((p, i) => [i, p.title]))}<button class="secondary-btn">Save session choice</button></form></section>
       <section class="section"><div class="section-heading"><h3>Your weekly foundations</h3></div><div class="os-plan-grid">${M.plans.map((p, i) => `<div class="card"><p class="eyebrow">${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][i]}</p><h3>${p.title}</h3><p class="help-text">${p.minutes} min · ${p.kind}</p></div>`).join('')}</div></section><section class="card section"><h3>Your original programme</h3><p class="help-text">All six-week logs, home-kit alternatives, technique guides and original goals are retained.</p>${btn('archive', 'Open original programme →')}${btn('old-progress', 'Original history')}${btn('old-goals', 'Original goals')}</section>`;
   }
   function sessionView() {
@@ -146,10 +145,6 @@ const HealthUI = (() => {
     }));
     main.querySelectorAll('[data-event]').forEach(el => el.addEventListener('click', () => eventView(el.dataset.event)));
     const onForm = (id, callback) => main.querySelector(`#${id}`)?.addEventListener('submit', e => { e.preventDefault(); callback(Object.fromEntries(new FormData(e.target)), e); });
-    onForm('plan-form', data => {
-      const day = current(); if (day.workout?.updatedAt || Object.keys(day.workout?.exercises || {}).length) return showToast('This session has records. Choose a different date to plan another session.');
-      day.planIndex = Number(data.planIndex); commit(); render();
-    });
     onForm('recovery-form', (data, e) => { current().recovery = { ...data, worse: e.target.worse.checked, redFlag: e.target.redFlag.checked, updatedAt: new Date().toISOString() }; if (commit()) showToast('Check-in saved'); render(); });
     onForm('sauna-form', (data, e) => { current().sauna = { ...data, skin: data.saunaSkin, shower: e.target.shower.checked, moisturise: e.target.moisturise.checked, hydrate: e.target.hydrate.checked, complete: true, updatedAt: new Date().toISOString() }; if (commit()) showToast('Sauna recorded'); render(); });
     onForm('settings-form', (data, e) => {

@@ -56,7 +56,13 @@
     { title: 'Longer easy cardio', short: 'Endurance', kind: 'cardio', minutes: 45, ids: [] },
     { title: 'Recovery + mobility', short: 'Recovery', kind: 'recovery', minutes: 20, ids: ['d2m-9090', 'd2m-hinge', 'd1m-hiprot'] }
   ];
-  function planFor(health, key) { const override = health.days[key]?.planIndex; return plans[Number.isInteger(override) && override >= 0 && override < 7 ? override : weekday(key)]; }
+  function planFor(health, key) {
+    const day = health.days[key];
+    // Retain the identity of previously logged sessions; unstarted days follow the weekly plan.
+    const recorded = day?.workout?.complete || day?.workout?.updatedAt || Object.keys(day?.workout?.exercises || {}).length;
+    const override = day?.planIndex;
+    return plans[recorded && Number.isInteger(override) && override >= 0 && override < 7 ? override : weekday(key)];
+  }
   function timeline(health, key) {
     const s = health.settings; const plan = planFor(health, key);
     return [
