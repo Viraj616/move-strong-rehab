@@ -141,3 +141,6 @@ The `CACHE_NAME` near the top of `sw.js` is versioned. A revised package should 
 - The line diagrams are position guides, not medical or biomechanical illustrations.
 - The app does not diagnose injury or replace surgeon/physiotherapist clearance.
 - Stop progression for sharp fracture-site or plate pain, new swelling, deformity, neurological symptoms, sudden weakness, or worsening symptoms after a fall.
+# Move Strong Health OS · version 2.0
+
+The calendar-first refresh is documented in [HEALTH_OS.md](HEALTH_OS.md), including data preservation, local preview, tests and notification limitations. The original programme documentation below is retained for reference; its six-week records remain accessible through Train → Original programme.
