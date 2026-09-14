@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -723,6 +723,7 @@ function renderWorkout() {
 }
 
 function renderExerciseCard(exercise, log) {
+  const instructions = getExerciseInstructions(exercise);
   const entry = log.exercises[exercise.id] || { done: false, sets: Array(exercise.sets).fill(''), load: '' };
   if (!Array.isArray(entry.sets)) entry.sets = Array(exercise.sets).fill('');
   while (entry.sets.length < exercise.sets) entry.sets.push('');
@@ -741,13 +742,16 @@ function renderExerciseCard(exercise, log) {
       </div>
       <div class="exercise-body">
         <details open>
-          <summary>Quick cues</summary>
-          <ul>${exercise.cues.map((cue) => `<li>${escapeHtml(cue)}</li>`).join('')}</ul>
+          <summary>How to do it · step by step</summary>
+          ${instructionBullets(instructions.steps)}
         </details>
         <details>
-          <summary>Setup and common mistakes</summary>
-          <p><strong>Setup:</strong> ${escapeHtml(guide.setup)}</p>
-          <p><strong>Watch for:</strong> ${escapeHtml(guide.mistake)}</p>
+          <summary>Starting position</summary>
+          ${instructionBullets(instructions.setup)}
+        </details>
+        <details>
+          <summary>Common mistakes to avoid</summary>
+          ${instructionBullets(instructions.mistakes)}
         </details>
         <div class="rehab-note"><strong>Clavicle note:</strong> ${escapeHtml(exercise.rehab)}</div>
         <button class="guide-inline-btn" data-guide-exercise="${exercise.id}">Open full technique guide</button>
@@ -1343,10 +1347,10 @@ function getExerciseChecklist(exercise) {
 }
 
 function openExerciseGuide(exercise) {
+  const instructions = getExerciseInstructions(exercise);
   const guide = getExerciseGuide(exercise);
   const overlay = document.getElementById('exerciseOverlay');
   const content = document.getElementById('guideContent');
-  const cueList = exercise.cues.map((cue) => `<li>${escapeHtml(cue)}</li>`).join('');
   const checklist = getExerciseChecklist(exercise).map((item) => `<li>${escapeHtml(item)}</li>`).join('');
   content.innerHTML = `
     <p class="eyebrow">Technique guide</p>
@@ -1354,9 +1358,9 @@ function openExerciseGuide(exercise) {
     <p class="guide-prescription">${escapeHtml(exercise.prescription)} · ${escapeHtml(exercise.group)}</p>
     <div class="guide-diagram-large">${makeDiagram(exercise.diagram)}</div>
     <div class="guide-steps">
-      <div><strong>1 · Set up</strong><span>${escapeHtml(guide.setup)}</span></div>
-      <div><strong>2 · Move</strong><span>${escapeHtml(guide.execution)}</span></div>
-      <div><strong>3 · Breathe</strong><span>${escapeHtml(guide.breathing)}</span></div>
+      <div><strong>1 · Starting position</strong>${instructionBullets(instructions.setup)}</div>
+      <div><strong>2 · How to do it</strong>${instructionBullets(instructions.steps)}</div>
+      <div><strong>3 · Breathe</strong>${instructionBullets(['Keep breathing throughout the movement.', 'For strength exercises, breathe out as you push, pull or stand; breathe in as you return.', 'Do not force your breathing or hold your breath.'])}</div>
     </div>
     <section class="guide-section guide-grid guide-grid-three">
       <div><h3>What it's for</h3><p>${escapeHtml(guide.purpose)}</p></div>
@@ -1364,8 +1368,7 @@ function openExerciseGuide(exercise) {
       <div><h3>Tempo</h3><p>${escapeHtml(getExerciseTempo(exercise))}</p></div>
     </section>
     <section class="guide-section"><h3>Position checklist</h3><ul>${checklist}</ul></section>
-    <section class="guide-section"><h3>Key cues</h3><ul>${cueList}</ul></section>
-    <section class="guide-section"><h3>Common mistake</h3><p>${escapeHtml(guide.mistake)}</p></section>
+    <section class="guide-section"><h3>Common mistakes to avoid</h3>${instructionBullets(instructions.mistakes)}</section>
     <section class="guide-section guide-grid">
       <div><h3>Make it easier</h3><p>${escapeHtml(guide.regression)}</p></div>
       <div><h3>Progress when ready</h3><p>${escapeHtml(guide.progression)}</p></div>

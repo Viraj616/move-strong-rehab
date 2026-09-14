@@ -111,6 +111,11 @@ progress::-moz-progress-bar { background:#568155; }
 .nav-item small { font-size:.64rem; }
 .help-text { line-height:1.65; }
 .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+.instruction-list { padding-left:21px; margin:8px 0 16px; }
+.instruction-list li { padding-left:3px; line-height:1.65; }
+.instruction-list li + li { margin-top:9px; }
+.guide-steps { grid-template-columns:1fr; }
+.guide-steps .instruction-list { color:#33413a; font-size:.9rem; margin-bottom:3px; }
 @media(min-width:1100px) { .topbar { padding-left:max(36px,calc((100% - 1108px)/2)); } }
 @media(max-width:760px) { .main-content { padding:24px 18px 55px; } .os-dashboard { grid-template-columns:1fr; gap:20px; } .os-heading { margin-bottom:20px; } .os-heading h2 { font-size:2.35rem; } .os-plan-grid, .os-recovery-grid { grid-template-columns:1fr; } .os-metrics { grid-template-columns:1fr 1fr; } .os-feature { padding:26px; } .os-calendar.month .os-calendar-day { min-height:100px; padding:6px 3px; } .os-calendar.month .os-calendar-block { font-size:.57rem; padding:4px 2px; } .os-calendar.month .os-day-number { font-size:.72rem; } .os-history-row { flex-direction:column; gap:6px; } }
 @media(max-width:420px) { .main-content { padding-left:14px; padding-right:14px; } .card { padding:20px; } .os-wordmark { display:none; } .os-week-strip { gap:5px; } .os-week-strip button { border-radius:13px; } .os-toolbar { gap:8px; } .os-date-controls { gap:5px; } .os-date-controls button { padding:0 11px; } .os-date-controls input { width:140px; } .form-grid { grid-template-columns:1fr; } .os-event { gap:10px; } .os-reminder { right:16px; } }
