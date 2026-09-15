@@ -240,7 +240,7 @@ const HealthUI = (() => {
     health().reminderState[`${M.dateKey()}/${event.id}`] = { done: true }; commit();
     reminderCard(event);
     if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
-      try { const registration = await navigator.serviceWorker.getRegistration(); await registration?.showNotification(event.title, { body: 'Open Move Strong to start, snooze or skip.', tag: `move-strong-${event.id}`, icon: './assets/icons/icon-192.png' }); } catch {}
+      try { const registration = await navigator.serviceWorker.getRegistration(); await registration?.showNotification(event.title, { body: 'Open Move Strong to start, snooze or skip.', tag: `move-strong-${event.id}`, icon: './assets/icons/move-strong-192.png' }); } catch {}
     }
   }
   function renderRoute() {

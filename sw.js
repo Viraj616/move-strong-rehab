@@ -1,17 +1,18 @@
-const CACHE_NAME = 'move-strong-rehab-v2.1.0';
+const CACHE_NAME = 'move-strong-rehab-v2.1.1';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=2.1.0',
-  './app.js?v=2.1.0',
-  './health-model.js?v=2.1.0',
-  './exercise-instructions.js?v=2.1.0',
-  './health-os.js?v=2.1.0',
-  './push-client.js?v=2.1.0',
-  './health-os.css?v=2.1.0',
+  './styles.css?v=2.1.1',
+  './app.js?v=2.1.1',
+  './health-model.js?v=2.1.1',
+  './exercise-instructions.js?v=2.1.1',
+  './health-os.js?v=2.1.1',
+  './push-client.js?v=2.1.1',
+  './health-os.css?v=2.1.1',
   './manifest.webmanifest',
-  './assets/icons/icon-192.png',
-  './assets/icons/icon-512.png'
+  './assets/icons/move-strong-192.png',
+  './assets/icons/move-strong-512.png',
+  './assets/icons/badge-96.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -41,7 +42,7 @@ self.addEventListener('push', event => {
   try { data = event.data?.json() || {}; } catch {}
   event.waitUntil(self.registration.showNotification(data.title || 'Move Strong reminder', {
     body: data.body || 'Open your daily plan.', tag: data.tag || 'move-strong-reminder',
-    icon: './assets/icons/icon-192.png', badge: './assets/icons/icon-192.png',
+    icon: './assets/icons/move-strong-192.png', badge: './assets/icons/badge-96.png',
     data: { url: self.registration.scope }
   }));
 });
