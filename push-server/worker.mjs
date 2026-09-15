@@ -38,20 +38,26 @@ function response(data, status, env) {
 }
 async function send(env, subscription, payload) {
   const request = webpush.generateRequestDetails(subscription, JSON.stringify({ ...payload, url: env.APP_URL }), { TTL: 600, urgency: 'normal', vapidDetails: { subject: env.APP_URL, publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY } });
-  return fetch(request.endpoint, { method: 'POST', headers: request.headers, body: request.body, redirect: 'error' });
+  // Workers supports only follow/manual. Do not follow a redirect with push credentials.
+  return fetch(request.endpoint, { method: 'POST', headers: request.headers, body: request.body, redirect: 'manual' });
 }
 async function deliver(env, device, event) {
   const claimed = await env.DB.prepare('INSERT OR IGNORE INTO deliveries(device_id,event_key,sent_at) VALUES(?,?,?)').bind(device.id, event.key, Date.now()).run();
-  if (!claimed.meta.changes) return false;
+  if (!claimed.meta.changes) return { ok: false, status: 429, error: 'A test was already sent this minute. Wait one minute before retrying.' };
   try {
     const result = await send(env, JSON.parse(device.subscription), { title: event.title, body: event.body, tag: event.key });
-    if (result.status === 404 || result.status === 410) await env.DB.prepare('UPDATE devices SET enabled=0 WHERE id=?').bind(device.id).run();
-    else if (!result.ok) throw Error('Push provider rejected delivery');
-    return result.ok;
-  } catch {
+    if (result.status === 404 || result.status === 410) {
+      await env.DB.prepare('UPDATE devices SET enabled=0 WHERE id=?').bind(device.id).run();
+      return { ok: false, status: 410, error: 'Your browser subscription expired. Disconnect and reconnect this phone.' };
+    }
+    if (!result.ok) throw Error(`Push provider rejected delivery (HTTP ${result.status})`);
+    return { ok: true, status: 200 };
+  } catch (error) {
+    const reason = String(error.message || error.name).replace(/https?:\/\/\S+/g, '[provider]').slice(0, 220);
+    console.error(JSON.stringify({ event: 'push_delivery_failed', reason }));
     // Transient failures can retry during the 10-minute delivery window.
     await env.DB.prepare('DELETE FROM deliveries WHERE device_id=? AND event_key=?').bind(device.id, event.key).run();
-    return false;
+    return { ok: false, status: 502, error: `Notification could not be sent: ${reason}` };
   }
 }
 export default {
@@ -82,8 +88,8 @@ export default {
         if (!device.enabled) return response({ error: 'Push subscription expired. Reconnect this device.' }, 410, env);
         await env.DB.prepare('UPDATE devices SET settings=?,activity=?,updated_at=? WHERE id=?').bind(JSON.stringify(validateSettings(data.settings)), JSON.stringify(validateActivity(data.activity)), Date.now(), device.id).run();
       } else if (path === '/test' && request.method === 'POST') {
-        const ok = await deliver(env, device, { key: `test/${Math.floor(Date.now()/60000)}`, title: 'Move Strong is connected', body: 'Your phone can now receive scheduled reminders.' });
-        return response({ ok, message: ok ? 'Test sent' : 'Test not sent; wait one minute before retrying' }, ok ? 200 : 429, env);
+        const result = await deliver(env, device, { key: `test/${Math.floor(Date.now()/60000)}`, title: 'Move Strong is connected', body: 'Your phone can now receive scheduled reminders.' });
+        return response({ ...result, message: result.ok ? 'Test sent' : result.error }, result.status, env);
       } else return response({ error: 'Not found' }, 404, env);
       return response({ ok: true }, 200, env);
     } catch { return response({ error: 'Unable to process request. Check your settings and try again.' }, 400, env); }

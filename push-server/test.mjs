@@ -63,7 +63,7 @@ test('registered device syncs, cron deduplicates, expired subscriptions disable,
   assert.equal((await call('/sync', deviceToken, { id, settings, activity: {} })).status, 200);
   const originalFetch = globalThis.fetch; let sent = 0;
   try {
-    globalThis.fetch = async () => { sent++; return new Response('', { status: 201 }); };
+    globalThis.fetch = async (url, options) => { assert.equal(options.redirect, 'manual'); sent++; return new Response('', { status: 201 }); };
     const scheduledTime = new Date('2026-09-14T10:00:00Z').getTime();
     await worker.scheduled({ scheduledTime }, env); await worker.scheduled({ scheduledTime }, env);
     assert.equal(sent, 1);
