@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '2.0.2';
+const APP_VERSION = '2.1.0';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -428,6 +428,7 @@ function saveState() {
     localStorage.setItem('moveStrongRehabPreHealthOSV1', existing);
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (typeof PushReminders !== 'undefined') PushReminders.scheduleSync();
 }
 
 function escapeHtml(value = '') {

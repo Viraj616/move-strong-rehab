@@ -1,3 +1,8 @@
 artifacts/
 node_modules/
 test-results/
+.wrangler/
+.dev.vars
+.env
+push-server/secrets.json
+notification-setup.txt
