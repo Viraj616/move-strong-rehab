@@ -1,4 +1,4 @@
-# Move Strong 2.0
+# Move Strong 2.1
 
 The app opens on a dated Today timeline, with a morning routine, scheduled training, movement breaks, optional sauna and bedtime. Calendar supports weekly/monthly views. Train retains the original exercise guides and offers a dated programme, set logging and previous results. Recovery logs sleep, shoulder symptoms, energy, breathing and sauna/skin response. Progress records manual calisthenics milestones and weekly activity. You contains schedule preferences and backups.
 
@@ -12,7 +12,11 @@ Before the first write, existing storage is copied to `moveStrongRehabPreHealthO
 
 Enable reminders in You. While the app runs, weekday movement reminders and optional sauna reminders offer Start, Snooze 30 minutes and Skip. Logged walks/workouts suppress movement reminders for 45 minutes. Alerts older than 15 minutes are not replayed. Browser notifications are requested only after pressing Enable; denied or unsupported permissions still permit in-app prompts. Reminders can be delayed if the OS suspends the tab.
 
-There is no backend or Web Push scheduler. Closed-app notifications are **not** implemented or promised. The four-week ICS snapshot contains local wall-clock events and movement/sauna display alarms. Calendar applications differ in alarm import behavior, so verify alerts after import. Use a dedicated calendar and replace the snapshot after schedule changes. Exported alerts do not suppress themselves after a workout. For reliable adaptive closed-app alerts, add a push subscription backend and scheduler in a subsequent release.
+Version 2.1 adds an optional Cloudflare Worker and D1 scheduler in `push-server/`. Connect the phone in You using the deployed server and private pairing code. The server uses standard encrypted Web Push and checks schedules once per minute in the phone's last-synced timezone. It suppresses duplicate deliveries and recent completed movement, retries transient failures for up to ten minutes, and disables expired subscriptions. It supports up to four active devices. Closed-app notifications require a valid connection and permission; delivery timing depends on network and Android settings. Push alerts open the app; notification action buttons and server-side snooze are not implemented. Open-app alerts are suppressed when push is connected to prevent duplicates.
+
+Only reminder settings, timezone, push subscription and recent completion flags leave the device. Health notes and detailed workout history do not. Device tokens are stored separately from backups; the pairing code and VAPID private key are excluded from Git. Schedule/completion changes sync when online, so offline changes cannot immediately suppress a server reminder. Reopen the app after timezone changes. Use Sync now to retry a failed sync, and Disconnect to remove the device from the server.
+
+Calendar export remains a fallback. Its four-week snapshot contains local-time events and movement/sauna alarms; verify your calendar retained alerts after import. It does not sync with the app and should be replaced after schedule changes.
 
 ## Training scope
 
@@ -26,4 +30,4 @@ Browser coverage includes desktop/mobile layout, old-record preservation, first-
 
 ## Release
 
-Deploy the static files to the existing website path only after review. The service worker cache is versioned to 2.0.0 and new script/style URLs are versioned to avoid mixing old cached code with the new page. Keep the same origin, do not clear site data, and export a backup on the device before deployment. Local preview data and the live site's browser data are independent.
+Deploy the static files to the existing website path only after review. The service worker cache and script/style URLs are versioned to avoid mixing old cached code with the new page. Keep the same origin, do not clear site data, and export a backup on the device before deployment. Local preview data and the live site's browser data are independent. The Worker only accepts the configured production origin; the local preview cannot pair with production.

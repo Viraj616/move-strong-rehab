@@ -1,0 +1,10 @@
+{
+  "name": "move-strong-reminders",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": { "APP_ORIGIN": "https://viraj616.github.io", "APP_URL": "https://viraj616.github.io/move-strong-rehab/" },
+  "d1_databases": [{ "binding": "DB", "database_name": "move-strong-reminders", "database_id": "60ec1e66-17e0-4bd6-b1f1-b0754a311f0c" }]
+}

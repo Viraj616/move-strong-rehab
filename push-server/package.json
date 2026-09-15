@@ -1,0 +1,1 @@
+{"name":"move-strong-push","private":true,"type":"module","scripts":{"test":"node --test test.mjs","check":"wrangler deploy --dry-run","login":"wrangler login","deploy":"wrangler deploy"},"dependencies":{"web-push":"^3.6.7"},"devDependencies":{"wrangler":"^4.0.0"}}

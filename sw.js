@@ -1,13 +1,14 @@
-const CACHE_NAME = 'move-strong-rehab-v2.0.2';
+const CACHE_NAME = 'move-strong-rehab-v2.1.0';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=2.0.2',
-  './app.js?v=2.0.2',
-  './health-model.js?v=2.0.2',
-  './exercise-instructions.js?v=2.0.2',
-  './health-os.js?v=2.0.2',
-  './health-os.css?v=2.0.2',
+  './styles.css?v=2.1.0',
+  './app.js?v=2.1.0',
+  './health-model.js?v=2.1.0',
+  './exercise-instructions.js?v=2.1.0',
+  './health-os.js?v=2.1.0',
+  './push-client.js?v=2.1.0',
+  './health-os.css?v=2.1.0',
   './manifest.webmanifest',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png'
@@ -32,6 +33,16 @@ self.addEventListener('notificationclick', event => {
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
     const client = clients.find(c => c.url.startsWith(self.registration.scope));
     return client ? client.focus() : self.clients.openWindow('./');
+  }));
+});
+
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data?.json() || {}; } catch {}
+  event.waitUntil(self.registration.showNotification(data.title || 'Move Strong reminder', {
+    body: data.body || 'Open your daily plan.', tag: data.tag || 'move-strong-reminder',
+    icon: './assets/icons/icon-192.png', badge: './assets/icons/icon-192.png',
+    data: { url: self.registration.scope }
   }));
 });
 
