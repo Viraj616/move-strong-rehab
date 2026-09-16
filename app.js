@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '2.1.1';
+const APP_VERSION = '2.1.2';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -500,12 +500,14 @@ function showToast(message) {
 }
 
 function routeTo(nextRoute) {
+  window.AppNavigation?.begin(nextRoute);
   route = nextRoute;
   window.scrollTo({ top: 0, behavior: 'instant' });
   render();
 }
 
 function render() {
+  window.AppNavigation?.record();
   backBtn.classList.toggle('hidden', route !== 'workout');
   bottomNav.classList.toggle('hidden', route === 'workout');
   document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.route === route));
@@ -1377,11 +1379,13 @@ function openExerciseGuide(exercise) {
     <section class="guide-section rehab-note"><strong>Clavicle rule:</strong> ${escapeHtml(exercise.rehab)}</section>
     <section class="guide-section stop-note"><strong>Stop signal:</strong> ${escapeHtml(guide.stop)}</section>
   `;
+  window.AppNavigation?.openModal('guide', exercise);
   overlay.classList.remove('hidden');
   document.body.classList.add('modal-open');
 }
 
 function closeExerciseGuide() {
+  if (window.AppNavigation?.closeModal('guide')) return;
   document.getElementById('exerciseOverlay')?.classList.add('hidden');
   document.body.classList.remove('modal-open');
 }
@@ -1515,6 +1519,7 @@ function makeDiagram(kind) {
 }
 
 function openTimer(seconds = 90) {
+  window.AppNavigation?.openModal('timer', seconds);
   timerSeconds = seconds;
   timerRemaining = seconds;
   timerPaused = false;
@@ -1546,12 +1551,12 @@ function updateTimerDisplay() {
 document.getElementById('timerMinus').addEventListener('click', () => { timerRemaining = Math.max(0, timerRemaining - 15); updateTimerDisplay(); });
 document.getElementById('timerPlus').addEventListener('click', () => { timerRemaining += 15; updateTimerDisplay(); });
 document.getElementById('timerPause').addEventListener('click', () => { timerPaused = !timerPaused; document.getElementById('timerPause').textContent = timerPaused ? 'Resume' : 'Pause'; });
-document.getElementById('timerClose').addEventListener('click', () => { document.getElementById('timerOverlay').classList.add('hidden'); clearInterval(timerId); });
+document.getElementById('timerClose').addEventListener('click', () => { if (window.AppNavigation?.closeModal('timer')) return; document.getElementById('timerOverlay').classList.add('hidden'); clearInterval(timerId); });
 document.getElementById('guideClose')?.addEventListener('click', closeExerciseGuide);
 document.getElementById('exerciseOverlay')?.addEventListener('click', (event) => { if (event.target.id === 'exerciseOverlay') closeExerciseGuide(); });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeExerciseGuide(); });
 
-backBtn.addEventListener('click', () => routeTo('home'));
+backBtn.addEventListener('click', () => AppNavigation.back());
 document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => routeTo(button.dataset.route)));
 
 window.addEventListener('beforeinstallprompt', (event) => {

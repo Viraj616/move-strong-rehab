@@ -117,10 +117,11 @@ const HealthUI = (() => {
   function download(data, name, type) {
     const url = URL.createObjectURL(new Blob([data], { type })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  function eventView(id) {
+  function eventView(id, restoring = false) {
     const event = M.timeline(health(), selectedDate).find(e => e.id === id); if (!event) return;
     if (id === 'workout') return routeTo('session');
     if (id === 'sauna') return routeTo('recovery');
+    if (!restoring) return routeTo('event:' + id);
     const day = current();
     main.innerHTML = header(labelDate(selectedDate), event.title, `${event.time} · ${event.minutes || 'Rest'}${event.minutes ? ' minutes' : ''}`) + `<section class="card"><p>${event.kind === 'movement' || id === 'light' ? 'Take a comfortable walk. A movement break does not need to be a workout.' : id === 'warmup' ? 'Use your familiar, cleared warm-up and check how your shoulder feels.' : id === 'breakfast' ? 'Make time for a protein-rich breakfast and your usual daily creatine, if you use it.' : 'Make a little space for this part of your day.'}</p><div class="os-toolbar">${btn('event-complete', doneEvent(event, day) ? 'Undo completion' : 'Mark done ✓', 'primary-btn')}${btn('event-skip', 'Skip today')}${btn('home', '← Today')}</div></section>`;
     bind();
@@ -244,6 +245,7 @@ const HealthUI = (() => {
     }
   }
   function renderRoute() {
+    if (route.startsWith('event:')) { eventView(route.slice(6), true); return true; }
     const views = { home: todayView, plan: calendarView, train: trainView, session: sessionView, recovery: recoveryView, progress: progressView, settings: settingsView };
     if (!views[route]) return false;
     pageTitle.textContent = 'Move Strong';
@@ -254,6 +256,9 @@ const HealthUI = (() => {
   }
   setInterval(checkReminders, 30000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminders(); });
-  return { renderRoute, checkReminders };
+  return { renderRoute, checkReminders,
+    navigationState: () => ({ selectedDate, calendarMode }),
+    restoreNavigation: data => { selectedDate = data.selectedDate; calendarMode = data.calendarMode; }
+  };
 })();
 render();
