@@ -1,14 +1,15 @@
-const CACHE_NAME = 'move-strong-rehab-v2.1.1';
+const CACHE_NAME = 'move-strong-rehab-v2.1.2';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=2.1.1',
-  './app.js?v=2.1.1',
-  './health-model.js?v=2.1.1',
-  './exercise-instructions.js?v=2.1.1',
-  './health-os.js?v=2.1.1',
-  './push-client.js?v=2.1.1',
-  './health-os.css?v=2.1.1',
+  './styles.css?v=2.1.2',
+  './app.js?v=2.1.2',
+  './health-model.js?v=2.1.2',
+  './exercise-instructions.js?v=2.1.2',
+  './health-os.js?v=2.1.2',
+  './navigation.js?v=2.1.2',
+  './push-client.js?v=2.1.2',
+  './health-os.css?v=2.1.2',
   './manifest.webmanifest',
   './assets/icons/move-strong-192.png',
   './assets/icons/move-strong-512.png',
@@ -53,6 +54,21 @@ self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
   if (requestUrl.origin !== self.location.origin) return;
 
+  // Fetch current Android install metadata, retaining an offline fallback.
+  if (requestUrl.pathname.endsWith('/manifest.webmanifest')) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      try {
+        const response = await fetch(event.request, { cache: 'no-cache' });
+        if (!response.ok) throw new Error('Manifest unavailable');
+        await cache.put(event.request, response.clone());
+        return response;
+      } catch {
+        return (await cache.match(event.request)) || Response.error();
+      }
+    })());
+    return;
+  }
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
