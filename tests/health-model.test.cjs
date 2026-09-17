@@ -64,3 +64,21 @@ test('visiting a blank date cannot hide an imported workout', () => {
   local.days['2026-09-14'].workout = { complete: true, exercises: { row: { sets: ['12'] } }, updatedAt: '2026-09-14T09:00:00Z' };
   assert.equal(M.mergeHealth(incoming, local).days['2026-09-14'].workout.exercises.row.sets[0], '12');
 });
+
+test('meditation follows work time and programme starts without altering history', () => {
+ const data = M.defaults();
+ assert.equal(M.weekday(data.settings.programmeStart), 0);
+ assert.equal(M.planFor(data, '2026-09-20').pending, true);
+ assert.equal(M.planFor(data, '2026-09-21').short, 'Pull');
+ assert.equal(M.timeline(data, '2026-09-20').some(e => e.id === 'workout'), false);
+ let meditation = M.timeline(data, '2026-09-21').find(e => e.id === 'meditation');
+ assert.equal(meditation.time, '08:50'); assert.equal(meditation.minutes, 10);
+ data.settings.work = '10:30';
+ assert.equal(M.timeline(data, '2026-09-21').find(e => e.id === 'meditation').time, '10:20');
+ M.dayRecord(data, '2026-09-14').workout.complete = true;
+ const before = JSON.stringify(data.days);
+ assert.equal(M.planFor(data, '2026-09-14').short, 'Pull');
+ assert.equal(JSON.stringify(data.days), before);
+ delete data.settings.programmeStart;
+ assert.equal(M.normalize(data).settings.programmeStart, '2026-09-21');
+});

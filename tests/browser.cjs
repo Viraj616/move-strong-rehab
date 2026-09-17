@@ -25,7 +25,7 @@ const path = require('node:path');
   await page.locator('[data-os="month"]').click();
   assert.equal(await page.locator('.os-calendar-day').count(), 42);
   await page.locator('[data-route="train"]').click();
-  await page.locator('#os-date').fill('2026-09-14');
+  await page.locator('#os-date').fill('2026-09-21');
   await page.locator('#os-date').dispatchEvent('change');
   await page.locator('[data-os="session"]').click();
   await page.locator('[data-set-index]').first().fill('8');

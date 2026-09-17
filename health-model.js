@@ -6,13 +6,14 @@
   const addDays = (key, count) => { const d = date(key); d.setDate(d.getDate() + count); return dateKey(d); };
   const weekday = key => (date(key).getDay() + 6) % 7;
   const weekStart = key => addDays(key, -weekday(key));
-  const defaults = () => ({ schemaVersion: 2, settings: { wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, upperBodyCleared: false, clearanceNotes: '' }, days: {}, milestones: {}, reminderState: {} });
+  const defaults = () => ({ schemaVersion: 2, settings: { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, upperBodyCleared: false, clearanceNotes: '' }, days: {}, milestones: {}, reminderState: {} });
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   function normalize(value) {
     const base = defaults();
     if (!value) return base;
     if (!isObject(value) || value.schemaVersion !== 2 || !isObject(value.days) || !isObject(value.settings)) throw new Error('Unsupported health data');
     const result = { ...base, ...value, settings: { ...base.settings, ...value.settings } };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(result.settings.programmeStart) || dateKey(date(result.settings.programmeStart)) !== result.settings.programmeStart) throw new Error('Invalid programme start');
     for (const key of ['wake', 'workout', 'work', 'windDown', 'bedtime', 'saunaTime']) if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(result.settings[key])) throw new Error('Invalid schedule');
     if (!Array.isArray(result.settings.movementTimes) || result.settings.movementTimes.length > 10 || result.settings.movementTimes.some(t => !/^([01]\d|2[0-3]):[0-5]\d$/.test(t))) throw new Error('Invalid reminder times');
     if (!Array.isArray(result.settings.saunaDays) || result.settings.saunaDays.some(d => !Number.isInteger(d) || d < 0 || d > 6)) throw new Error('Invalid sauna schedule');
@@ -60,6 +61,7 @@
     const day = health.days[key];
     // Retain the identity of previously logged sessions; unstarted days follow the weekly plan.
     const recorded = day?.workout?.complete || day?.workout?.updatedAt || Object.keys(day?.workout?.exercises || {}).length;
+    if (!recorded && key < (health.settings.programmeStart || '2026-09-21')) return { title: 'Programme starts 21 September', short: 'Starts 21 Sept', kind: 'rest', minutes: 0, ids: [], pending: true };
     const override = day?.planIndex;
     return plans[recorded && Number.isInteger(override) && override >= 0 && override < 7 ? override : weekday(key)];
   }
@@ -72,12 +74,13 @@
       { id: 'workout', time: s.workout, title: plan.title, minutes: plan.minutes, kind: plan.kind },
       { id: 'shower', time: shift(s.workout, plan.minutes + 5), title: 'Shower + moisturise', minutes: 15, kind: 'routine' },
       { id: 'breakfast', time: shift(s.workout, plan.minutes + 20), title: 'Breakfast + daily creatine', minutes: 20, kind: 'routine' },
+      { id: 'meditation', time: shift(s.work, -10), title: 'Meditation', minutes: 10, kind: 'routine' },
       { id: 'work', time: s.work, title: 'Deep work', minutes: 90, kind: 'focus' },
       ...(weekday(key) < 5 ? s.movementTimes.map(t => ({ id: `move-${t}`, time: t, title: t === s.movementTimes[1] ? 'Post-lunch walk' : 'Movement break', minutes: t === s.movementTimes[1] ? 10 : 5, kind: 'movement' })) : []),
       ...(s.saunaDays.includes(weekday(key)) ? [{ id: 'sauna', time: s.saunaTime, title: 'Optional sauna', minutes: 10, kind: 'sauna' }] : []),
       { id: 'winddown', time: s.windDown, title: 'Wind down', minutes: 30, kind: 'rest' },
       { id: 'bedtime', time: s.bedtime, title: 'Target bedtime', minutes: 0, kind: 'rest' }
-    ].sort((a, b) => a.time.localeCompare(b.time));
+    ].filter(e => !plan.pending || !['workout', 'warmup'].includes(e.id)).sort((a, b) => a.time.localeCompare(b.time));
   }
   function recoveryMessage(r = {}, cleared = false) {
     if (r.redFlag) return 'Stop training and seek medical assessment for sharp plate-site pain, new weakness or swelling.';
