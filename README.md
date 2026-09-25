@@ -5,22 +5,25 @@ A local-first six-week Progressive Web App (PWA) containing the six-day Strength
 ## Included
 
 - Six training days, each with a 10- or 20-minute morning session, a longer gym evening session, and a home-kit replacement session for travel days
-- Local position-guide diagrams for every exercise
 - Text technique cues and clavicle-specific precautions
 - Tap-to-open detailed exercise technique guides
-- Larger offline exercise diagrams
-- Sets, repetitions, loads/levels and exercise-completion tracking
+- Text-only exercise cards and guides, without exercise-mimicking pictures or animations
+- Sets, repetitions, loads/levels, per-exercise RIR, technique quality and exercise-completion tracking
 - Rest timer
 - Home-kit workouts using bands, pull-up bar, 2 × 5 kg dumbbells, and a 10 kg kettlebell
 - Skill tabs for pull-up practice, active hangs, hollow holds, straight-bar support and muscle-up prerequisites
 - Run tabs for easy run/walk, Zone 2 run/walk and controlled intervals
 - Goals page for muscle-up readiness and running benchmarks
-- Pain-during, pain-after and next-morning response tracking
+- Pain-during, pain-after and required-for-progression next-morning shoulder response tracking
+- Cardio breathing/asthma symptom and reliever-use tracking
+- Deterministic PROGRESS / HOLD / REGRESS weekly reviews with a reason for every change
+- Automatic next-week workout generation in the calendar
+- Optional Firebase Authentication + Firestore cloud sync, while retaining offline local saves
 - Six-week completion view
 - JSON backup and restore
 - Offline use after installation
 
-The app stores training records locally in the browser on the device. It has no user account or server database.
+The app always stores training records locally in the browser first. Cloud sync is optional and connects only to a Firebase project and account configured by the user.
 
 ---
 
@@ -86,12 +89,12 @@ The public repository will contain the app code and generic exercise plan. Your 
 6. Open **Move Strong** from the Android home screen.
 7. In the app, open **Settings** and set the programme start date, operated side, and default morning duration.
 
-The plan, diagrams, detailed technique guides and saved logs work offline after the app has loaded. YouTube fallback links have been removed from v1.4.
+The plan, detailed text technique guides and saved logs work offline after the app has loaded.
 
 ## 7. First-use checklist
 
 1. Open **Plan** and inspect all six days, including the new **Home kit** option.
-2. Open Day 1 morning, Day 1 evening gym, and Day 1 home kit to confirm the exercise cards and diagrams load.
+2. Open Day 1 morning, Day 1 evening gym, and Day 1 home kit to confirm the exercise cards and text guidance load.
 3. Enter a test set, close the app, reopen it and confirm the entry remains.
 4. Open **Settings → Export backup** and save the JSON file somewhere safe, such as Google Drive or OneDrive.
 5. Delete the test entry if needed and begin Week 1.
@@ -135,12 +138,37 @@ The `CACHE_NAME` near the top of `sw.js` is versioned. A revised package should 
 
 ---
 
+# Optional Firebase / Firestore sync
+
+Local persistence works without any cloud setup. To sync between devices or keep an online copy:
+
+1. Create a Firebase project and add a Web app.
+2. In **Authentication → Sign-in method**, enable **Email/Password**.
+3. Create the default Firestore database.
+4. Publish these Firestore rules:
+
+```text
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
+```
+
+5. In Move Strong, open **You → Connect Firebase / Firestore** and enter the Firebase project ID, Web API key, and a sync-account email/password. Choose **Create sync account** once, then use **Sign in + sync** on other devices.
+
+The app stores the Firebase refresh token, project ID and email in a separate local browser key, `moveStrongFirebaseSyncV1`. Passwords are sent directly to Firebase Authentication and are not stored. Exported Move Strong backups do not contain Firebase credentials or tokens. Firestore receives the complete app state, including health notes, so the Firebase account and rules must remain private.
+
+---
+
 # Important limitations
 
 - This is an independent plan inspired by publicly shown movement-training principles. It is not affiliated with Strength Side and does not reproduce a paid programme.
-- The line diagrams are position guides, not medical or biomechanical illustrations.
 - The app does not diagnose injury or replace surgeon/physiotherapist clearance.
 - Stop progression for sharp fracture-site or plate pain, new swelling, deformity, neurological symptoms, sudden weakness, or worsening symptoms after a fall.
-# Move Strong Health OS · version 2.0
+# Move Strong Health OS · version 3.1
 
 The calendar-first refresh is documented in [HEALTH_OS.md](HEALTH_OS.md), including data preservation, local preview, tests and notification limitations. The original programme documentation below is retained for reference; its six-week records remain accessible through Train → Original programme.
