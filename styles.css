@@ -182,7 +182,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .group-label { margin: 21px 2px 9px; color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .09em; font-weight: 900; }
 .exercise-card { overflow: hidden; margin-bottom: 12px; }
-.exercise-top { padding: 16px; display: grid; grid-template-columns: 86px 1fr auto; gap: 13px; align-items: center; }
+.exercise-top { padding: 18px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
 .exercise-visual { width: 86px; height: 76px; border-radius: 16px; background: linear-gradient(180deg, #f4f7f1, #e9eee6); overflow: hidden; box-shadow: inset 0 0 0 1px rgba(16,26,23,.05); }
 .exercise-visual svg { display: block; width: 100%; height: 100%; }
 .motion-diagram .pose-start { opacity: 1; }
@@ -190,6 +190,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .motion-diagram { overflow: visible; }
 .exercise-title h3 { margin: 0 0 5px; font-size: 1rem; letter-spacing: -.02em; }
 .exercise-title p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.35; }
+.exercise-title small { display:block; margin-top:9px; color:var(--accent-dark); font-size:.7rem; font-weight:800; }
+.exercise-group { display:block; margin-bottom:7px; color:var(--muted); font-size:.62rem; font-weight:850; letter-spacing:.1em; text-transform:uppercase; }
 .exercise-check { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border); background: white; color: transparent; font-weight: 900; }
 .exercise-check.checked { background: var(--accent); border-color: var(--accent-dark); color: var(--ink); }
 .exercise-body { border-top: 1px solid var(--border); padding: 0 16px 16px; }
@@ -204,7 +206,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .exercise-actions a, .exercise-actions button { min-height: 39px; border: 1px solid var(--border); border-radius: 12px; padding: 0 11px; background: white; color: var(--ink); font-weight: 780; text-decoration: none; display: inline-flex; align-items: center; }
 .log-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(82px, 1fr)); gap: 8px; margin: 12px 0; }
 .log-field label { display: block; color: var(--muted); font-size: .68rem; font-weight: 800; margin: 0 0 4px 2px; text-transform: uppercase; letter-spacing: .04em; }
-.log-field input { width: 100%; min-height: 42px; border: 1px solid var(--border); border-radius: 12px; padding: 0 10px; background: #fbfcf9; }
+.log-field input, .log-field select { width: 100%; min-height: 42px; border: 1px solid var(--border); border-radius: 12px; padding: 0 10px; background: #fbfcf9; color:var(--ink); }
 
 .session-summary { margin-top: 22px; }
 .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
@@ -269,8 +271,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 @media (max-width: 420px) {
-  .exercise-top { grid-template-columns: 75px 1fr auto; gap: 10px; }
-  .exercise-visual { width: 75px; height: 68px; }
+  .exercise-top { grid-template-columns: 1fr auto; gap: 10px; }
   .log-row, .form-grid { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
   .timer-controls { grid-template-columns: 1fr; }

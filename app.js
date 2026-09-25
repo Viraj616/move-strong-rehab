@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '2.1.3';
+const APP_VERSION = '3.1.0';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -388,6 +388,7 @@ const defaultState = () => ({
 });
 
 let storageReadError = false;
+let healthMigrationPending = false;
 let state = loadState();
 let route = 'home';
 let selectedWeek = 1;
@@ -412,7 +413,10 @@ function loadState() {
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !parsed.logs || Array.isArray(parsed.logs)) throw new Error('Invalid stored state');
-    if (parsed.healthOS) parsed.healthOS = HealthModel.normalize(parsed.healthOS);
+    if (parsed.healthOS) {
+      healthMigrationPending = parsed.healthOS.schemaVersion === 2;
+      parsed.healthOS = HealthModel.normalize(parsed.healthOS);
+    }
     const base = defaultState();
     return { ...base, ...parsed, goals: { ...base.goals, ...(parsed.goals || {}) }, logs: parsed.logs || {} };
   } catch {
@@ -429,7 +433,34 @@ function saveState() {
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (typeof PushReminders !== 'undefined') PushReminders.scheduleSync();
+  if (typeof CloudSync !== 'undefined') CloudSync.schedule();
 }
+
+if (healthMigrationPending && !storageReadError) saveState();
+
+function mergeCloudState(remote) {
+  if (!remote || typeof remote !== 'object' || !remote.logs || Array.isArray(remote.logs)) throw new Error('Cloud backup is invalid');
+  const timedMerge = (a = {}, b = {}) => {
+    const result = { ...a };
+    for (const [key, value] of Object.entries(b)) {
+      const oldTime = Date.parse(result[key]?.updatedAt || '') || 0;
+      const newTime = Date.parse(value?.updatedAt || '') || 0;
+      if (!result[key] || newTime >= oldTime) result[key] = value;
+    }
+    return result;
+  };
+  const localHasRecords = Object.keys(state.logs || {}).length || Object.values(state.healthOS?.days || {}).some(day => day.workout?.updatedAt || day.recovery?.updatedAt || Object.keys(day.workout?.exercises || {}).length);
+  state = {
+    ...defaultState(), ...(localHasRecords ? remote : state), ...(localHasRecords ? state : remote),
+    goals: localHasRecords ? { ...(remote.goals || {}), ...(state.goals || {}) } : { ...(state.goals || {}), ...(remote.goals || {}) },
+    logs: timedMerge(remote.logs, state.logs),
+    healthOS: HealthModel.mergeCloud(remote.healthOS, state.healthOS)
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  render();
+}
+
+window.MoveStrongCloudBridge = { getState: () => state, mergeRemote: async remote => mergeCloudState(remote) };
 
 function escapeHtml(value = '') {
   return String(value)
@@ -704,7 +735,7 @@ function renderWorkout() {
 
     <div class="card safety-card">
       <strong>Today’s loading check</strong>
-      <p>Proceed only if pain is no more than mild, range is not reduced, and the operated shoulder is not more irritable than yesterday. Home kit is a replacement for the gym session when travelling, not an extra hard session. Skill and run tabs should stay submaximal while the clavicle is still adapting. Tap any diagram or Technique guide for a larger step-by-step guide. These guides support technique but do not replace your physiotherapist’s advice.</p>
+      <p>Proceed only if pain is no more than mild, range is not reduced, and the operated shoulder is not more irritable than yesterday. Home kit is a replacement for the gym session when travelling, not an extra hard session. Skill and run tabs should stay submaximal while the clavicle is still adapting. Open Technique + safety details for concise text instructions. These guides support technique but do not replace your physiotherapist’s advice.</p>
     </div>
 
     <section class="section">${exerciseHtml}</section>
@@ -735,16 +766,12 @@ function renderExerciseCard(exercise, log) {
     <div class="log-field"><label>Set ${index + 1} · ${escapeHtml(exercise.unit)}</label><input inputmode="decimal" data-exercise-id="${exercise.id}" data-set-index="${index}" value="${escapeHtml(entry.sets[index] || '')}" placeholder="–"></div>`).join('');
   return `
     <article class="exercise-card" data-card-id="${exercise.id}">
-      <div class="exercise-top">
-        <button class="exercise-visual guide-thumb" data-guide-exercise="${exercise.id}" aria-label="Open detailed guide for ${escapeHtml(exercise.name)}">
-          ${makeDiagram(exercise.diagram)}
-          <span>Guide</span>
-        </button>
-        <button class="exercise-title title-button" data-guide-exercise="${exercise.id}" aria-label="Open detailed guide for ${escapeHtml(exercise.name)}"><h3>${escapeHtml(exercise.name)}</h3><p>${escapeHtml(exercise.prescription)}</p></button>
+      <div class="exercise-top exercise-top-text">
+        <button class="exercise-title title-button" data-guide-exercise="${exercise.id}" aria-label="Open detailed guide for ${escapeHtml(exercise.name)}"><span class="exercise-group">${escapeHtml(exercise.group)}</span><h3>${escapeHtml(exercise.name)}</h3><p>${escapeHtml(exercise.prescription)}</p><small>Technique + safety details →</small></button>
         <button class="exercise-check ${entry.done ? 'checked' : ''}" data-check-exercise="${exercise.id}" aria-label="Mark ${escapeHtml(exercise.name)} complete">✓</button>
       </div>
       <div class="exercise-body">
-        <details open>
+        <details>
           <summary>How to do it · step by step</summary>
           ${instructionBullets(instructions.steps)}
         </details>
@@ -757,8 +784,8 @@ function renderExerciseCard(exercise, log) {
           ${instructionBullets(instructions.mistakes)}
         </details>
         <div class="rehab-note"><strong>Clavicle note:</strong> ${escapeHtml(exercise.rehab)}</div>
-        <button class="guide-inline-btn" data-guide-exercise="${exercise.id}">Open full technique guide</button>
-        <div class="log-row">${setInputs}<div class="log-field"><label>Load / level</label><input data-exercise-load="${exercise.id}" value="${escapeHtml(entry.load || '')}" placeholder="e.g. 8 kg / bench 5"></div></div>
+        <button class="guide-inline-btn" data-guide-exercise="${exercise.id}">Technique, regressions and stop signals</button>
+        <div class="log-row">${setInputs}<div class="log-field"><label>Load / level</label><input data-exercise-load="${exercise.id}" value="${escapeHtml(entry.load || '')}" placeholder="e.g. 8 kg / bench 5"></div><div class="log-field"><label>RIR · clean reps left</label><select data-exercise-rir="${exercise.id}"><option value="">Not recorded</option>${[0, 1, 2, 3, 4].map(value => `<option value="${value}" ${String(entry.rir) === String(value) ? 'selected' : ''}>${value}</option>`).join('')}</select></div><div class="log-field"><label>Technique quality</label><select data-exercise-technique="${exercise.id}"><option value="">Not recorded</option><option value="clean" ${entry.technique === 'clean' ? 'selected' : ''}>Clean</option><option value="okay" ${entry.technique === 'okay' ? 'selected' : ''}>Okay</option><option value="poor" ${entry.technique === 'poor' ? 'selected' : ''}>Poor</option></select></div></div>
         <div class="exercise-actions">
           ${exercise.sets > 1 ? `<button data-rest-for="${exercise.id}">Rest timer</button>` : ''}
         </div>
@@ -815,6 +842,15 @@ function bindWorkoutEvents(session, log) {
     log.exercises[id] = current;
     log.updatedAt = new Date().toISOString();
     saveState();
+  }));
+
+  main.querySelectorAll('[data-exercise-rir]').forEach((input) => input.addEventListener('change', () => {
+    const id = input.dataset.exerciseRir; const current = log.exercises[id] || { done: false, sets: [], load: '' };
+    current.rir = input.value; log.exercises[id] = current; log.updatedAt = new Date().toISOString(); saveState();
+  }));
+  main.querySelectorAll('[data-exercise-technique]').forEach((input) => input.addEventListener('change', () => {
+    const id = input.dataset.exerciseTechnique; const current = log.exercises[id] || { done: false, sets: [], load: '' };
+    current.technique = input.value; log.exercises[id] = current; log.updatedAt = new Date().toISOString(); saveState();
   }));
 
   main.querySelectorAll('[data-rest-for]').forEach((button) => button.addEventListener('click', () => openTimer(90)));
@@ -1004,7 +1040,7 @@ function renderSettings() {
     <section class="settings-card">
       <p class="eyebrow">Install</p>
       <h2>Use it like a phone app</h2>
-      <p class="help-text">On Android Chrome: menu → Add to home screen → Install. Once installed, the plan, diagrams, detailed technique guides and logs work offline.</p>
+      <p class="help-text">On Android Chrome: menu → Add to home screen → Install. Once installed, the plan, text technique guides and logs work offline.</p>
       <div class="settings-actions"><button id="settingsInstall" class="primary-btn">Install app</button></div>
     </section>
 
@@ -1022,7 +1058,7 @@ function renderSettings() {
     <section class="settings-card">
       <p class="eyebrow">About</p>
       <p><strong>Move Strong Rehab v${APP_VERSION}</strong></p>
-      <p class="help-text">This v1.5 update adds animated mini-demos, clearer movement visuals, and expanded tap-to-open technique guides. This is an independent, Strength Side-inspired training plan. It is not affiliated with Strength Side and does not reproduce a paid programme. It is a training log, not a medical device.</p>
+      <p class="help-text">Move Strong now uses focused, text-only technique and safety guidance instead of exercise animations. This is an independent, Strength Side-inspired training plan. It is not affiliated with Strength Side and does not reproduce a paid programme. It is a training log, not a medical device.</p>
     </section>
   `;
 
@@ -1074,6 +1110,7 @@ importInput.addEventListener('change', async (event) => {
     // Persist before changing the in-memory view so failed imports cannot appear successful.
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
     state = merged;
+    CloudSync.schedule();
     showToast('Backup merged; existing records kept');
     routeTo('settings');
   } catch {
@@ -1359,7 +1396,6 @@ function openExerciseGuide(exercise) {
     <p class="eyebrow">Technique guide</p>
     <h2>${escapeHtml(exercise.name)}</h2>
     <p class="guide-prescription">${escapeHtml(exercise.prescription)} · ${escapeHtml(exercise.group)}</p>
-    <div class="guide-diagram-large">${makeDiagram(exercise.diagram)}</div>
     <div class="guide-steps">
       <div><strong>1 · Starting position</strong>${instructionBullets(instructions.setup)}</div>
       <div><strong>2 · How to do it</strong>${instructionBullets(instructions.steps)}</div>

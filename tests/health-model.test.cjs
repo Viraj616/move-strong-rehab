@@ -22,7 +22,68 @@ test('normalization rejects incompatible or corrupted records', () => {
   assert.throws(() => M.normalize(data));
   const bad = M.defaults(); bad.days['2026-02-31'] = {};
   assert.throws(() => M.normalize(bad));
-  assert.equal(M.normalize(M.defaults()).schemaVersion, 2);
+  assert.equal(M.normalize(M.defaults()).schemaVersion, 3);
+});
+
+test('schema v2 migrates to v3 without changing dated records', () => {
+  const old = M.defaults(); old.schemaVersion = 2; delete old.generatedWeeks; delete old.weeklyReviews;
+  M.dayRecord(old, '2026-09-21').workout = { complete: true, exercises: { row: { done: true, sets: ['8'], load: '5 kg' } }, updatedAt: '2026-09-21T08:00:00Z' };
+  const before = JSON.stringify(old.days);
+  const migrated = M.normalize(old);
+  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(JSON.stringify(migrated.days), before);
+  assert.deepEqual(migrated.generatedWeeks, {});
+});
+
+test('21–25 September baseline generates the agreed first adaptive week', () => {
+  const old = M.defaults(); old.schemaVersion = 2; delete old.generatedWeeks; delete old.weeklyReviews;
+  const sessions = {
+    '2026-09-21': { 'd3e-pullup-single': { done: true, sets: ['1', '1', '1'] }, 'd3e-row': { done: true, sets: ['8', '8', '8'], load: '5kg' } },
+    '2026-09-22': { 'd2e-bss': { done: true, sets: ['8', '8', '8'] }, 'd2e-slrdl': { done: true, sets: ['8', '8', '8'] }, 'd2e-calf': { done: true, sets: ['12', '12', '12'] } },
+    '2026-09-23': { 'd1e-pushup': { done: true, sets: ['8', '8', '8'] } },
+    '2026-09-24': {},
+    '2026-09-25': { 'd3e-pullup-single': { done: false, sets: ['3', '2', '2'] }, 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5kg' }, 'd1e-pushup': { done: true, sets: ['12', '10', '10'] } }
+  };
+  for (const [key, exercises] of Object.entries(sessions)) M.dayRecord(old, key).workout = { complete: true, exercises, cardioMinutes: key === '2026-09-24' ? '30' : '', updatedAt: `${key}T08:00:00Z` };
+  const migrated = M.normalize(old); const review = migrated.weeklyReviews['2026-09-21'];
+  assert.equal(review.items.find(x => x.id === 'd3e-pullup-single').state, 'HOLD');
+  assert.match(review.items.find(x => x.id === 'd1e-pushup').to, /floor set/i);
+  assert.equal(M.planFor(migrated, '2026-09-28').exerciseOverrides['d3e-row'].prescription, '3 × 12 at the same 5 kg load');
+  assert.equal(M.planFor(migrated, '2026-10-01').minutes, 32);
+});
+
+test('deterministic rules hold missing recovery and regress symptom flares', () => {
+  const data = M.defaults();
+  M.dayRecord(data, '2026-10-05').workout = { complete: true, painDuring: '1', effort: '6', exercises: { 'd3e-row': { done: true, sets: ['12', '12', '12'], rir: '3', technique: 'clean' } }, updatedAt: '2026-10-05T08:00:00Z' };
+  assert.equal(M.decideExercise(data, '2026-10-05', 'd3e-row').state, 'HOLD');
+  M.dayRecord(data, '2026-10-06').recovery.previousWorkout = { workoutDate: '2026-10-05', pain: '4', status: 'worse', complete: true };
+  assert.equal(M.decideExercise(data, '2026-10-05', 'd3e-row').state, 'REGRESS');
+  data.days['2026-10-06'].recovery.previousWorkout = { workoutDate: '2026-10-05', pain: '1', status: 'same', complete: true };
+  assert.equal(M.decideExercise(data, '2026-10-05', 'd3e-row').state, 'PROGRESS');
+});
+
+test('cardio progression is symptom-aware and capped at ten percent', () => {
+  const data = M.defaults();
+  for (let i = 0; i < 5; i++) {
+    const key = M.addDays('2026-10-05', i);
+    M.dayRecord(data, key).workout = { complete: true, cardioMinutes: i === 3 ? '30' : '', breathingSymptoms: 'none', painDuring: '1', painNext: '1', effort: '6', exercises: {}, updatedAt: `${key}T08:00:00Z` };
+  }
+  const review = M.generateNextWeek(data, '2026-10-05'); const cardio = review.items.find(item => item.id === 'cardio');
+  assert.equal(cardio.state, 'PROGRESS');
+  assert.equal(cardio.minutes, 33);
+  assert.equal(M.planFor(data, '2026-10-15').minutes, 33);
+});
+
+test('cloud merge restores remote settings on an empty device and keeps newest workouts', () => {
+  const remote = M.defaults(); remote.settings.workout = '08:00';
+  M.dayRecord(remote, '2026-10-05').workout = { complete: true, exercises: { row: { sets: ['10'] } }, updatedAt: '2026-10-05T08:00:00Z' };
+  const restored = M.mergeCloud(remote, M.defaults());
+  assert.equal(restored.settings.workout, '08:00');
+  const local = M.defaults(); local.settings.workout = '07:00';
+  M.dayRecord(local, '2026-10-05').workout = { complete: true, exercises: { row: { sets: ['12'] } }, updatedAt: '2026-10-05T09:00:00Z' };
+  const merged = M.mergeCloud(remote, local);
+  assert.equal(merged.settings.workout, '07:00');
+  assert.equal(merged.days['2026-10-05'].workout.exercises.row.sets[0], '12');
 });
 test('reminders respect weekday, completion, snooze, stale alerts and recent activity', () => {
   const data = M.defaults(); data.settings.reminders = true;
