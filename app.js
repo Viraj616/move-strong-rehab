@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.1.1';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -460,7 +460,15 @@ function mergeCloudState(remote) {
   render();
 }
 
-window.MoveStrongCloudBridge = { getState: () => state, mergeRemote: async remote => mergeCloudState(remote) };
+function isEditingField() {
+  return document.activeElement?.matches('input, textarea, select, [contenteditable="true"]') || false;
+}
+
+window.MoveStrongCloudBridge = {
+  getState: () => state,
+  mergeRemote: async remote => mergeCloudState(remote),
+  isEditing: isEditingField
+};
 
 function escapeHtml(value = '') {
   return String(value)

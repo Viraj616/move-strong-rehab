@@ -50,11 +50,15 @@ const CloudSync = (() => {
     await jsonFetch(documentUrl(config), { method: 'PATCH', headers: { Authorization: `Bearer ${config.idToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: { payload: { stringValue: JSON.stringify(state) }, schemaVersion: { integerValue: '3' }, updatedAt: { timestampValue: new Date().toISOString() } } }) });
   }
   async function syncNow() {
-    if (syncing || !bridge || !navigator.onLine) return false;
+    if (syncing || !bridge || !navigator.onLine || bridge.isEditing?.()) return false;
     let config = read(); if (!config.refreshToken) return false;
     syncing = true; lastError = '';
     try {
       config = await token(config); const remote = await pull(config);
+      // Replacing the rendered view while a form control is active destroys the
+      // focused node (and closes the mobile keyboard). Wait for editing to end;
+      // focusout will schedule a fresh sync with the newly committed value.
+      if (bridge.isEditing?.()) { schedule(); return false; }
       if (remote) await bridge.mergeRemote(remote);
       await push(config, bridge.getState());
       lastSyncedAt = new Date().toISOString(); write({ ...read(), lastSyncedAt });
@@ -65,6 +69,13 @@ const CloudSync = (() => {
   function schedule() { clearTimeout(timer); if (status().configured) timer = setTimeout(syncNow, 1200); }
   async function connect(details, create = false) { await authenticate(details, create); const ok = await syncNow(); if (!ok) throw new Error(lastError || 'Cloud sync could not complete'); return status(); }
   function disconnect() { clearTimeout(timer); localStorage.removeItem(CONFIG_KEY); lastError = ''; lastSyncedAt = ''; }
-  function init(value) { bridge = value; window.addEventListener('online', schedule); if (status().configured) setTimeout(syncNow, 100); }
+  function init(value) {
+    bridge = value;
+    window.addEventListener('online', schedule);
+    document.addEventListener('focusout', () => setTimeout(() => {
+      if (!bridge?.isEditing?.()) schedule();
+    }));
+    if (status().configured) setTimeout(syncNow, 100);
+  }
   return { init, status, schedule, syncNow, connect, disconnect };
 })();
