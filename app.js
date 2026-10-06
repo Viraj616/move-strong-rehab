@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '3.1.1';
+const APP_VERSION = '3.2.0';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -414,7 +414,7 @@ function loadState() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !parsed.logs || Array.isArray(parsed.logs)) throw new Error('Invalid stored state');
     if (parsed.healthOS) {
-      healthMigrationPending = parsed.healthOS.schemaVersion === 2;
+      healthMigrationPending = parsed.healthOS.schemaVersion !== 4;
       parsed.healthOS = HealthModel.normalize(parsed.healthOS);
     }
     const base = defaultState();

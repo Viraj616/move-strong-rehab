@@ -22,17 +22,20 @@ test('normalization rejects incompatible or corrupted records', () => {
   assert.throws(() => M.normalize(data));
   const bad = M.defaults(); bad.days['2026-02-31'] = {};
   assert.throws(() => M.normalize(bad));
-  assert.equal(M.normalize(M.defaults()).schemaVersion, 3);
+  assert.equal(M.normalize(M.defaults()).schemaVersion, 4);
 });
 
-test('schema v2 migrates to v3 without changing dated records', () => {
+test('older schemas migrate to v4 without changing dated records and gain the known home-kit profile', () => {
   const old = M.defaults(); old.schemaVersion = 2; delete old.generatedWeeks; delete old.weeklyReviews;
   M.dayRecord(old, '2026-09-21').workout = { complete: true, exercises: { row: { done: true, sets: ['8'], load: '5 kg' } }, updatedAt: '2026-09-21T08:00:00Z' };
   const before = JSON.stringify(old.days);
   const migrated = M.normalize(old);
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
   assert.equal(JSON.stringify(migrated.days), before);
   assert.deepEqual(migrated.generatedWeeks, {});
+  assert.deepEqual(migrated.settings.equipment.dumbbellsKg, [5, 5]);
+  assert.deepEqual(migrated.settings.equipment.kettlebellsKg, [10]);
+  assert.equal(migrated.settings.equipment.pullUpBar, true);
 });
 
 test('21–25 September baseline generates the agreed first adaptive week', () => {
@@ -47,9 +50,89 @@ test('21–25 September baseline generates the agreed first adaptive week', () =
   for (const [key, exercises] of Object.entries(sessions)) M.dayRecord(old, key).workout = { complete: true, exercises, cardioMinutes: key === '2026-09-24' ? '30' : '', updatedAt: `${key}T08:00:00Z` };
   const migrated = M.normalize(old); const review = migrated.weeklyReviews['2026-09-21'];
   assert.equal(review.items.find(x => x.id === 'd3e-pullup-single').state, 'HOLD');
-  assert.match(review.items.find(x => x.id === 'd1e-pushup').to, /floor set/i);
-  assert.equal(M.planFor(migrated, '2026-09-28').exerciseOverrides['d3e-row'].prescription, '3 × 12 at the same 5 kg load');
+  assert.match(review.items.find(x => x.id === 'd1e-pushup').to, /floor push-ups/i);
+  assert.equal(M.planFor(migrated, '2026-09-28').exerciseOverrides['d3e-row'].prescription, '3 × 12 rows with the 5 kg dumbbell');
   assert.equal(M.planFor(migrated, '2026-10-01').minutes, 32);
+});
+
+function addQualifiedWeek(data, id, entry, extra = {}) {
+  for (let i = 0; i < 5; i++) {
+    const key = M.addDays('2026-10-05', i);
+    M.dayRecord(data, key).workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', breathingSymptoms: 'none', exercises: i === 0 ? { [id]: { done: true, rir: '3', technique: 'clean', ...entry } } : {}, updatedAt: `${key}T08:00:00Z`, ...extra };
+  }
+}
+
+test('row progression uses exact owned loads, then tempo when no heavier implement exists', () => {
+  const loaded = M.defaults();
+  addQualifiedWeek(loaded, 'd3e-row', { sets: ['15', '15', '15'], load: '5 kg dumbbell' });
+  const loadedRow = M.generateNextWeek(loaded, '2026-10-05').items.find(item => item.id === 'd3e-row');
+  assert.match(loadedRow.to, /3 × 6 supported rows with the 10 kg kettlebell/);
+  assert.doesNotMatch(loadedRow.to, /next available/i);
+
+  const limited = M.defaults(); limited.settings.equipment.kettlebellsKg = [];
+  addQualifiedWeek(limited, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
+  const limitedRow = M.generateNextWeek(limited, '2026-10-05').items.find(item => item.id === 'd3e-row');
+  assert.match(limitedRow.to, /5 kg dumbbell, 3-sec lowering \+ 1-sec top pause/);
+  assert.doesNotMatch(limitedRow.to, /heavier|next available/i);
+});
+
+test('lower-body progression selects the owned 2 × 5 kg pair or 10 kg kettlebell', () => {
+  const dumbbells = M.defaults();
+  addQualifiedWeek(dumbbells, 'd2e-bss', { sets: ['12', '12', '12'], load: 'bodyweight' });
+  assert.match(M.generateNextWeek(dumbbells, '2026-10-05').items.find(item => item.id === 'd2e-bss').to, /2 × 5 kg dumbbells at the sides/);
+
+  const kettlebell = M.defaults(); kettlebell.settings.equipment.dumbbellsKg = [];
+  addQualifiedWeek(kettlebell, 'd2e-slrdl', { sets: ['12', '12', '12'], load: 'bodyweight' });
+  assert.match(M.generateNextWeek(kettlebell, '2026-10-05').items.find(item => item.id === 'd2e-slrdl').to, /10 kg kettlebell held centrally or in the non-operated hand/);
+});
+
+test('bodyweight pulling and pushing progress by assistance, leverage or volume without invented load', () => {
+  const pull = M.defaults();
+  addQualifiedWeek(pull, 'd3e-pullup-single', { sets: ['2', '2', '2'], load: 'bodyweight' });
+  const pullNext = M.generateNextWeek(pull, '2026-10-05').items.find(item => item.id === 'd3e-pullup-single').to;
+  assert.match(pullNext, /3 sets of 3 \/ 2 \/ 2 pull-ups with bodyweight/);
+
+  const push = M.defaults();
+  addQualifiedWeek(push, 'd1e-pushup', { sets: ['10', '10', '10'], load: '76 cm counter incline' });
+  const pushNext = M.generateNextWeek(push, '2026-10-05').items.find(item => item.id === 'd1e-pushup').to;
+  assert.match(pushNext, /floor push-ups \+ 2 × 10 at 76 cm counter incline/);
+  assert.doesNotMatch(`${pullNext} ${pushNext}`, /kg|external load|next available/i);
+});
+
+test('band progressions use the exact configured labels', () => {
+  const rotation = M.defaults(); rotation.settings.equipment.bands = ['yellow', 'red'];
+  addQualifiedWeek(rotation, 'd3e-er', { sets: ['15', '15'], load: 'yellow' });
+  rotation.days['2026-10-05'].plan = { ...M.plans[0], exerciseOverrides: { 'd3e-er': { targetSets: 2, targetReps: 15, loadLabel: 'yellow', variation: 'tempo' } } };
+  assert.match(M.generateNextWeek(rotation, '2026-10-05').items.find(item => item.id === 'd3e-er').to, /2 × 10 external rotations with red/);
+
+  const pull = M.defaults(); pull.settings.equipment.bands = ['yellow', 'red'];
+  addQualifiedWeek(pull, 'd3e-pullup-single', { sets: ['3', '3', '3'], load: 'red assistance' });
+  assert.match(M.generateNextWeek(pull, '2026-10-05').items.find(item => item.id === 'd3e-pullup-single').to, /yellow assistance/);
+});
+
+test('cardio prescription uses the configured rower and preserves asthma-safe progression', () => {
+  const data = M.defaults();
+  addQualifiedWeek(data, 'd2e-calf', { sets: ['15', '15', '15'], load: 'bodyweight' }, { cardioMinutes: '30' });
+  const cardio = M.generateNextWeek(data, '2026-10-05').items.find(item => item.id === 'cardio');
+  assert.match(cardio.to, /33 min on the rowing machine at conversational effort after a gradual warm-up/);
+  data.settings.equipment.rowingMachine = false;
+  const refreshed = M.generateNextWeek(data, '2026-10-05').items.find(item => item.id === 'cardio');
+  assert.match(refreshed.to, /brisk walk/);
+});
+
+test('equipment edits refresh unstarted days but preserve an already-started workout', () => {
+  const data = M.defaults();
+  addQualifiedWeek(data, 'd3e-row', { sets: ['15', '15', '15'], load: '5 kg dumbbell' });
+  M.generateNextWeek(data, '2026-10-05');
+  const started = M.dayRecord(data, '2026-10-12');
+  started.workout.updatedAt = '2026-10-12T08:00:00Z';
+  const startedPrescription = M.planFor(data, '2026-10-12').exerciseOverrides['d3e-row'].prescription;
+  assert.match(startedPrescription, /10 kg kettlebell/);
+
+  data.settings.equipment.kettlebellsKg = [];
+  M.generateNextWeek(data, '2026-10-05');
+  assert.equal(M.planFor(data, '2026-10-12').exerciseOverrides['d3e-row'].prescription, startedPrescription);
+  assert.doesNotMatch(M.planFor(data, '2026-10-16').exerciseOverrides['d3e-row'].prescription, /10 kg kettlebell/);
 });
 
 test('deterministic rules hold missing recovery and regress symptom flares', () => {
@@ -100,9 +183,10 @@ test('adaptive generation uses the latest logged reps to create a concrete next 
   const review = M.generateNextWeek(data, start);
   const row = review.items.find(item => item.id === 'd3e-row');
   assert.equal(row.state, 'PROGRESS');
-  assert.match(row.from, /12 \/ 12 \/ 12 @ 5kg/);
-  assert.match(row.to, /next available load\/resistance/);
-  assert.match(M.planFor(data, '2026-10-12').exerciseOverrides['d3e-row'].prescription, /next available load\/resistance/);
+  assert.match(row.from, /3 × 12 · 5kg/);
+  assert.match(row.to, /5 kg dumbbell, 3-sec lowering \+ 1-sec top pause/);
+  assert.match(M.planFor(data, '2026-10-12').exerciseOverrides['d3e-row'].prescription, /5 kg dumbbell, 3-sec lowering \+ 1-sec top pause/);
+  assert.doesNotMatch(row.to, /next available load\/resistance/i);
 });
 
 test('stale v1 generated weeks refresh before the following week is started', () => {
@@ -126,7 +210,7 @@ test('stale v1 generated weeks refresh before the following week is started', ()
   M.ensureGeneratedWeeks(data, '2026-10-12');
   const after = M.planFor(data, '2026-10-12');
   assert.ok(after.exerciseOverrides['d3e-row']);
-  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 2);
+  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 3);
 });
 
 test('started days are preserved while later days of a refreshed week can update', () => {
@@ -160,6 +244,15 @@ test('cloud merge restores remote settings on an empty device and keeps newest w
   const merged = M.mergeCloud(remote, local);
   assert.equal(merged.settings.workout, '07:00');
   assert.equal(merged.days['2026-10-05'].workout.exercises.row.sets[0], '12');
+});
+test('cloud merge does not let an older device invent equipment over an explicit remote profile', () => {
+  const remote = M.defaults(); remote.settings.equipment = { pullUpBar: true, bands: [], dumbbellsKg: [], kettlebellsKg: [10], rowingMachine: false };
+  const oldLocal = M.defaults(); oldLocal.schemaVersion = 3; delete oldLocal.settings.equipment;
+  M.dayRecord(oldLocal, '2026-10-05').workout = { complete: true, exercises: {}, updatedAt: '2026-10-05T09:00:00Z' };
+  const merged = M.mergeCloud(remote, oldLocal);
+  assert.deepEqual(merged.settings.equipment.dumbbellsKg, []);
+  assert.deepEqual(merged.settings.equipment.kettlebellsKg, [10]);
+  assert.equal(merged.settings.equipment.rowingMachine, false);
 });
 test('reminders respect weekday, completion, snooze, stale alerts and recent activity', () => {
   const data = M.defaults(); data.settings.reminders = true;

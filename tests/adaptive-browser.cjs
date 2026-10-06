@@ -21,10 +21,13 @@ const assert = require('node:assert/strict');
     await page.evaluate(value => localStorage.setItem('moveStrongRehabStateV1', JSON.stringify(value)), state);
     await page.reload();
     const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem('moveStrongRehabStateV1')));
-    assert.equal(migrated.healthOS.schemaVersion, 3);
+    assert.equal(migrated.healthOS.schemaVersion, 4);
+    assert.deepEqual(migrated.healthOS.settings.equipment.dumbbellsKg, [5, 5]);
     assert.equal(migrated.logs['w1-d1-home'].notes, 'preserve me');
     assert.ok(migrated.healthOS.generatedWeeks['2026-09-28']);
 
+    await page.locator('[data-route="train"]').click();
+    await page.locator('#os-date').fill('2026-09-28'); await page.locator('#os-date').dispatchEvent('change');
     await page.locator('[data-route="progress"]').click();
     await page.getByText('First adaptive week', { exact: true }).waitFor();
     assert.equal(await page.locator('.os-state.progress').count() > 0, true);
@@ -32,7 +35,6 @@ const assert = require('node:assert/strict');
     await page.screenshot({ path: 'artifacts/adaptive-review.png', fullPage: true });
 
     await page.locator('[data-route="train"]').click();
-    await page.locator('#os-date').fill('2026-09-28'); await page.locator('#os-date').dispatchEvent('change');
     await page.locator('[data-os="session"]').click();
     await page.getByText(/8–9 clean total reps/, { exact: false }).waitFor();
     await page.screenshot({ path: 'artifacts/text-workout.png', fullPage: true });
@@ -52,7 +54,19 @@ const assert = require('node:assert/strict');
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('moveStrongRehabStateV1')));
     assert.equal(saved.healthOS.days['2026-09-28'].workout.exercises['d3e-pullup-single'].rir, '3');
     assert.equal(saved.healthOS.days['2026-09-29'].recovery.previousWorkout.status, 'same');
+
+    await page.locator('[data-route="settings"]').click();
+    assert.equal(await page.locator('#os-dumbbellsKg').inputValue(), '5, 5');
+    assert.equal(await page.locator('#os-kettlebellsKg').inputValue(), '10');
+    await page.screenshot({ path: 'artifacts/equipment-settings.png', fullPage: true });
+    await page.locator('#os-dumbbellsKg').fill('');
+    await page.locator('[name="rowingMachine"]').uncheck();
+    await page.getByRole('button', { name: 'Save preferences' }).click();
+    const equipment = await page.evaluate(() => JSON.parse(localStorage.getItem('moveStrongRehabStateV1')).healthOS.settings.equipment);
+    assert.deepEqual(equipment.dumbbellsKg, []);
+    assert.equal(equipment.kettlebellsKg[0], 10);
+    assert.equal(equipment.rowingMachine, false);
     assert.deepEqual(errors, []);
-    console.log('PASS: v3 migration, first adaptive week, RIR/technique, asthma fields and next-morning recovery');
+    console.log('PASS: v4 equipment migration, editable kit, adaptive week, RIR/technique, asthma fields and next-morning recovery');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });
