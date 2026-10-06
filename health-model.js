@@ -9,8 +9,16 @@
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const clone = value => JSON.parse(JSON.stringify(value));
 
-  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, upperBodyCleared: false, clearanceNotes: '' };
-  const defaults = () => ({ schemaVersion: 3, settings: { ...settingsDefaults }, days: {}, milestones: {}, reminderState: {}, generatedWeeks: {}, weeklyReviews: {} });
+  const RULES_VERSION = 2;
+  const equipmentDefaults = { pullUpBar: true, bands: ['Unlabelled band'], dumbbellsKg: [5, 5], kettlebellsKg: [10], rowingMachine: true };
+  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, upperBodyCleared: false, clearanceNotes: '', equipment: equipmentDefaults };
+  function normalizeEquipment(value) {
+    const source = isObject(value) ? value : equipmentDefaults;
+    const loads = key => Array.isArray(source[key]) ? source[key].map(Number).filter(n => Number.isFinite(n) && n > 0 && n <= 200).slice(0, 20).sort((a, b) => a - b) : clone(equipmentDefaults[key]);
+    const bands = Array.isArray(source.bands) ? [...new Set(source.bands.map(v => String(v).trim()).filter(Boolean))].slice(0, 10) : clone(equipmentDefaults.bands);
+    return { pullUpBar: source.pullUpBar !== false, bands, dumbbellsKg: loads('dumbbellsKg'), kettlebellsKg: loads('kettlebellsKg'), rowingMachine: source.rowingMachine !== false };
+  }
+  const defaults = () => ({ schemaVersion: 4, settings: { ...settingsDefaults, equipment: normalizeEquipment(equipmentDefaults) }, days: {}, milestones: {}, reminderState: {}, generatedWeeks: {}, weeklyReviews: {} });
   const plans = [
     { title: 'Pull + shoulder control', short: 'Pull', kind: 'strength', minutes: 45, ids: ['d3e-warm', 'd3e-scap-pull', 'd3e-pullup-single', 'd3e-row', 'd3e-er', 'd1m-deadbug'] },
     { title: 'Legs + aerobic base', short: 'Legs', kind: 'strength', minutes: 45, ids: ['d2e-warm', 'd2e-bss', 'd2e-slrdl', 'd2e-calf', 'd2e-zone2'] },
@@ -26,8 +34,8 @@
   function normalize(value) {
     const base = defaults();
     if (!value) return base;
-    if (!isObject(value) || ![2, 3].includes(value.schemaVersion) || !isObject(value.days) || !isObject(value.settings)) throw new Error('Unsupported health data');
-    const result = { ...base, ...clone(value), schemaVersion: 3, settings: { ...base.settings, ...value.settings } };
+    if (!isObject(value) || ![2, 3, 4].includes(value.schemaVersion) || !isObject(value.days) || !isObject(value.settings)) throw new Error('Unsupported health data');
+    const result = { ...base, ...clone(value), schemaVersion: 4, settings: { ...base.settings, ...value.settings, equipment: normalizeEquipment(value.settings.equipment) } };
     result.generatedWeeks = isObject(result.generatedWeeks) ? result.generatedWeeks : {};
     result.weeklyReviews = isObject(result.weeklyReviews) ? result.weeklyReviews : {};
     if (!validDate(result.settings.programmeStart)) throw new Error('Invalid programme start');
@@ -58,16 +66,17 @@
   function mergeHealth(incoming, existing) {
     const restored = normalize(incoming);
     if (!existing) return restored;
-    const local = normalize(existing); const days = { ...restored.days };
+    const localHadEquipment = isObject(existing?.settings?.equipment); const local = normalize(existing); const days = { ...restored.days };
     for (const [key, day] of Object.entries(local.days)) {
       const saved = restored.days[key] || {};
       days[key] = { ...saved, ...day, routine: { ...saved.routine, ...day.routine }, activities: { ...saved.activities, ...day.activities }, recovery: { ...saved.recovery, ...day.recovery }, workout: day.workout?.updatedAt || Object.keys(day.workout?.exercises || {}).length ? day.workout : saved.workout || day.workout };
     }
-    return { ...restored, ...local, schemaVersion: 3, days, milestones: { ...restored.milestones, ...local.milestones }, generatedWeeks: { ...restored.generatedWeeks, ...local.generatedWeeks }, weeklyReviews: { ...restored.weeklyReviews, ...local.weeklyReviews } };
+    return { ...restored, ...local, schemaVersion: 4, settings: { ...restored.settings, ...local.settings, equipment: localHadEquipment ? local.settings.equipment : restored.settings.equipment }, days, milestones: { ...restored.milestones, ...local.milestones }, generatedWeeks: { ...restored.generatedWeeks, ...local.generatedWeeks }, weeklyReviews: { ...restored.weeklyReviews, ...local.weeklyReviews } };
   }
   function mergeCloud(remote, local) {
-    const a = normalize(remote); const b = normalize(local); const localHasRecords = Object.values(b.days).some(day => day.workout?.updatedAt || day.recovery?.updatedAt || day.sauna?.updatedAt || Object.keys(day.workout?.exercises || {}).length);
-    const result = { ...a, ...b, schemaVersion: 3, settings: localHasRecords ? { ...a.settings, ...b.settings } : { ...b.settings, ...a.settings }, days: {}, milestones: { ...a.milestones, ...b.milestones }, reminderState: { ...a.reminderState, ...b.reminderState }, generatedWeeks: { ...a.generatedWeeks, ...b.generatedWeeks }, weeklyReviews: { ...a.weeklyReviews, ...b.weeklyReviews } };
+    const localHadEquipment = isObject(local?.settings?.equipment); const a = normalize(remote); const b = normalize(local); const localHasRecords = Object.values(b.days).some(day => day.workout?.updatedAt || day.recovery?.updatedAt || day.sauna?.updatedAt || Object.keys(day.workout?.exercises || {}).length);
+    const result = { ...a, ...b, schemaVersion: 4, settings: localHasRecords ? { ...a.settings, ...b.settings } : { ...b.settings, ...a.settings }, days: {}, milestones: { ...a.milestones, ...b.milestones }, reminderState: { ...a.reminderState, ...b.reminderState }, generatedWeeks: { ...a.generatedWeeks, ...b.generatedWeeks }, weeklyReviews: { ...a.weeklyReviews, ...b.weeklyReviews } };
+    if (localHasRecords && !localHadEquipment) result.settings.equipment = a.settings.equipment;
     for (const key of new Set([...Object.keys(a.days), ...Object.keys(b.days)])) {
       const x = a.days[key] || {}; const y = b.days[key] || {};
       result.days[key] = { ...x, ...y, routine: { ...x.routine, ...y.routine }, activities: { ...x.activities, ...y.activities }, recovery: newest(x.recovery, y.recovery) || {}, workout: newest(x.workout, y.workout) || { complete: false, exercises: {} }, sauna: newest(x.sauna, y.sauna) };
@@ -100,7 +109,7 @@
     return check?.complete && check.workoutDate === prior ? null : { workoutDate: prior, key, workout };
   }
   function sessionsInWeek(health, start) { return Array.from({ length: 7 }, (_, i) => { const key = addDays(start, i); return [key, health.days[key]]; }).filter(([, d]) => d?.workout?.complete); }
-  function exerciseEvidence(health, start, id) { return sessionsInWeek(health, start).filter(([, d]) => d.workout.exercises?.[id]).map(([key, d]) => ({ key, entry: d.workout.exercises[id], workout: d.workout, recovery: recoveryForWorkout(health, key) })); }
+  function exerciseEvidence(health, start, id) { return sessionsInWeek(health, start).filter(([, d]) => d.workout.exercises?.[id]).map(([key, d]) => ({ key, entry: d.workout.exercises[id], workout: d.workout, recovery: recoveryForWorkout(health, key), plan: d.plan })); }
   function decideExercise(health, start, id, name = id) {
     const evidence = exerciseEvidence(health, start, id); const shoulder = isShoulderLoading(id);
     if (!evidence.length) return { id, name, state: 'HOLD', reason: 'No completed exposure was recorded, so the prescription stays unchanged.', evidence: 'No completed sets' };
@@ -118,18 +127,158 @@
   }
 
   const conservativePrescription = {
-    'd3e-pullup-single': { name: 'Strict pull-up', hold: 'Accumulate 8–9 clean total reps across 3 sets; keep the same variation', progress: 'Add only 1 total clean rep across 3 sets; keep the same variation', regress: 'Use assistance and stop 3–4 reps before failure' },
-    'd3e-row': { name: 'Dumbbell row', hold: 'Repeat the same reps and load', progress: 'Add 1–2 reps per set at the same load', regress: 'Reduce reps or support the torso; keep both shoulders level' },
-    'd1e-pushup': { name: 'Push-up', hold: 'Repeat the same incline and reps', progress: 'One controlled floor set, then 2 incline back-off sets; leave at least 3 RIR', regress: 'Raise the incline and use a pain-free symmetrical range' },
-    'd2e-bss': { name: 'Bulgarian split squat', hold: 'Repeat the same reps and load', progress: 'Add 1–2 reps per set; do not add load in the same week', regress: 'Reduce range or use supported split squats' },
-    'd2e-slrdl': { name: 'Single-leg RDL', hold: 'Repeat the same reps and load', progress: 'Add 1–2 reps per set with the same support and load', regress: 'Use a kickstand stance and shorter range' },
-    'd2e-calf': { name: 'Calf raise', hold: 'Repeat the same reps', progress: 'Add up to 3 reps per set; keep load unchanged', regress: 'Use two legs and a comfortable range' },
-    'd1m-deadbug': { name: 'Dead bug', hold: 'Keep the same reps and improve control', progress: 'Add 1 rep per set only', regress: 'Shorten the lever and keep the operated arm comfortable' }
+    'd3e-scap-pull': { name: 'Scapular pull-up' },
+    'd3e-pullup-single': { name: 'Strict pull-up' },
+    'd3e-row': { name: 'Row' },
+    'd3e-er': { name: 'Band external rotation' },
+    'd2m-er': { name: 'Band external rotation' },
+    'd1e-pushup': { name: 'Push-up' },
+    'd1m-scap': { name: 'Scapular push-up' },
+    'd2e-bss': { name: 'Bulgarian split squat' },
+    'd2e-slrdl': { name: 'Single-leg RDL' },
+    'd2e-calf': { name: 'Calf raise' },
+    'd1m-deadbug': { name: 'Dead bug' }
   };
+  const exerciseEquipment = {
+    'd3e-scap-pull': ['pullUpBar', 'bands'], 'd3e-pullup-single': ['pullUpBar', 'bands'], 'd3e-row': ['dumbbellsKg', 'kettlebellsKg', 'bands'],
+    'd3e-er': ['bands'], 'd2m-er': ['bands'], 'd1e-pushup': ['bodyweight'], 'd1m-scap': ['bodyweight'],
+    'd2e-bss': ['dumbbellsKg', 'kettlebellsKg', 'bodyweight'], 'd2e-slrdl': ['dumbbellsKg', 'kettlebellsKg', 'bodyweight'],
+    'd2e-calf': ['dumbbellsKg', 'kettlebellsKg', 'bodyweight'], 'd1m-deadbug': ['bodyweight'], cardio: ['rowingMachine', 'walking']
+  };
+  const equipmentSignature = health => JSON.stringify(normalizeEquipment(health.settings.equipment));
+  const numericSets = entry => (entry?.sets || []).map(Number).filter(Number.isFinite).filter(n => n >= 0);
+  const setSummary = entry => {
+    const reps = numericSets(entry); if (!reps.length) return 'No completed reps recorded';
+    const sets = reps.length; const work = reps.every(n => n === reps[0]) ? `${sets} × ${reps[0]}` : `${sets} sets: ${reps.join(' / ')}`;
+    return `${work}${entry.load?.trim() ? ` · ${entry.load.trim()}` : ' · bodyweight / level not recorded'}`;
+  };
+  const parseKg = value => {
+    const text = String(value || '').toLowerCase(); const pair = text.match(/2\s*[x×]\s*(\d+(?:\.\d+)?)\s*kg/); if (pair) return Number(pair[1]) * 2;
+    const match = text.match(/(\d+(?:\.\d+)?)\s*kg/); return match ? Number(match[1]) : 0;
+  };
+  const distribute = (total, sets = 3) => Array.from({ length: sets }, (_, i) => Math.floor(total / sets) + (i < total % sets ? 1 : 0));
+  function latestExercise(health, start, id) {
+    return exerciseEvidence(health, start, id).sort((a, b) => b.key.localeCompare(a.key))[0] || null;
+  }
+  function sourceTarget(latest, id) { return latest?.plan?.exerciseOverrides?.[id] || {}; }
+  function lowerBodyLoad(equipment) {
+    const pairs = equipment.dumbbellsKg.reduce((counts, load) => (counts[load] = (counts[load] || 0) + 1, counts), {});
+    const pair = Object.keys(pairs).map(Number).filter(load => pairs[load] >= 2).sort((a, b) => a - b)[0];
+    if (pair) return { loadKg: pair * 2, implement: 'dumbbells', label: `2 × ${pair} kg dumbbells at the sides` };
+    const kettlebell = equipment.kettlebellsKg[0];
+    return kettlebell ? { loadKg: kettlebell, implement: 'kettlebell', label: `${kettlebell} kg kettlebell` } : null;
+  }
+  function rowLoads(equipment) {
+    return [...new Set([
+      ...equipment.dumbbellsKg.map(loadKg => ({ loadKg, implement: 'dumbbell', label: `${loadKg} kg dumbbell` })),
+      ...equipment.kettlebellsKg.map(loadKg => ({ loadKg, implement: 'kettlebell', label: `${loadKg} kg kettlebell` }))
+    ].sort((a, b) => a.loadKg - b.loadKg).map(x => JSON.stringify(x)))].map(value => JSON.parse(value));
+  }
+  function bandFor(entry, equipment, strongest = false) {
+    if (!equipment.bands.length) return null;
+    const current = equipment.bands.find(label => String(entry?.load || '').toLowerCase().includes(label.toLowerCase()));
+    return current || equipment.bands[strongest ? equipment.bands.length - 1 : 0];
+  }
+  function target(prescription, details = {}) { return { prescription, ...details }; }
+  function equipmentAwarePrescription(health, start, id, state) {
+    const equipment = normalizeEquipment(health.settings.equipment); const latest = latestExercise(health, start, id); const entry = latest?.entry || {};
+    const prior = sourceTarget(latest, id); const reps = numericSets(entry); const sets = reps.length || Number(prior.targetSets) || 3;
+    const minReps = reps.length ? Math.min(...reps) : Number(prior.targetReps) || 8; const totalReps = reps.reduce((sum, n) => sum + n, 0);
+    const actualLoad = entry.load?.trim() || prior.loadLabel || ''; const currentKg = parseKg(actualLoad) || Number(prior.loadKg) || 0;
+    const from = latest ? setSummary(entry) : 'No completed sets';
+    const sameLoad = actualLoad || (currentKg ? `${currentKg} kg` : 'bodyweight');
+    const holdAvailable = (id === 'd3e-pullup-single' || id === 'd3e-scap-pull') ? equipment.pullUpBar
+      : (id === 'd3e-er' || id === 'd2m-er') ? equipment.bands.length > 0
+      : id === 'd3e-row' && currentKg ? rowLoads(equipment).some(x => x.loadKg === currentKg)
+      : ['d2e-bss', 'd2e-slrdl', 'd2e-calf'].includes(id) && currentKg ? Boolean(lowerBodyLoad(equipment)?.loadKg === currentKg)
+      : true;
+    if (state === 'HOLD' && holdAvailable) {
+      const heldReps = prior.targetReps !== undefined ? prior.targetReps : reps.length ? reps : minReps;
+      const heldWork = Array.isArray(heldReps) ? `${heldReps.length} sets of ${heldReps.join(' / ')}` : `${sets} × ${heldReps}`;
+      return { from, to: target(`${heldWork} with ${sameLoad}; keep the same controlled variation`, { targetSets: sets, targetReps: heldReps, loadKg: currentKg, loadLabel: sameLoad, variation: prior.variation || 'standard' }) };
+    }
+    if (state === 'HOLD') state = 'REGRESS';
+
+    if (id === 'd3e-row') {
+      const loads = rowLoads(equipment); const current = loads.find(x => x.loadKg === currentKg); const chosen = current || loads[0];
+      if (!chosen && equipment.bands.length) {
+        const band = bandFor({ load: actualLoad }, equipment); const bandIndex = equipment.bands.indexOf(band); const count = state === 'REGRESS' ? Math.max(8, minReps - 2) : Math.min(15, minReps + 2);
+        if (state === 'PROGRESS' && minReps >= 15 && prior.variation === 'tempo-band-row' && bandIndex < equipment.bands.length - 1) {
+          const nextBand = equipment.bands[bandIndex + 1]; return { from, to: target(`3 × 10 standing band rows with ${nextBand}`, { targetSets: 3, targetReps: 10, implement: 'band', loadLabel: nextBand, variation: 'band-row' }) };
+        }
+        const tempo = state === 'PROGRESS' && minReps >= 15;
+        return { from, to: target(`3 × ${tempo ? 15 : count} standing band rows with ${band}${tempo ? ', 3-sec return + 1-sec squeeze' : ''}`, { targetSets: 3, targetReps: tempo ? 15 : count, implement: 'band', loadLabel: band, variation: tempo ? 'tempo-band-row' : 'band-row' }) };
+      }
+      if (!chosen) return { from, to: target(state === 'REGRESS' ? '2 × 8 bodyweight prone W pulls with a 2-sec squeeze' : '3 × 10 bodyweight prone W pulls with a 2-sec squeeze', { targetSets: state === 'REGRESS' ? 2 : 3, targetReps: state === 'REGRESS' ? 8 : 10, implement: 'bodyweight', variation: 'prone-w' }) };
+      if (state === 'REGRESS') return { from, to: target(`2 × ${Math.max(6, minReps - 2)} chest-supported rows with the ${chosen.label}`, { targetSets: 2, targetReps: Math.max(6, minReps - 2), ...chosen, loadLabel: chosen.label, variation: 'chest-supported' }) };
+      if (currentKg && chosen.loadKg !== currentKg) return { from, to: target(`3 × 6 supported rows with the ${chosen.label}; stop at 3 RIR`, { targetSets: 3, targetReps: 6, ...chosen, loadLabel: chosen.label, variation: 'standard' }) };
+      if (minReps < 12) return { from, to: target(`${sets} × ${Math.min(12, minReps + 2)} rows with the ${chosen.label}`, { targetSets: sets, targetReps: Math.min(12, minReps + 2), ...chosen, loadLabel: chosen.label, variation: 'standard' }) };
+      if (minReps < 15 && prior.variation !== 'tempo') return { from, to: target(`${sets} × ${minReps} rows with the ${chosen.label}, 3-sec lowering + 1-sec top pause`, { targetSets: sets, targetReps: minReps, ...chosen, loadLabel: chosen.label, variation: 'tempo' }) };
+      const heavier = loads.find(x => x.loadKg > chosen.loadKg);
+      if (heavier && (minReps >= 15 || prior.variation === 'tempo' || prior.variation === 'one-and-half')) return { from, to: target(`3 × 6 supported rows with the ${heavier.label}; stop at 3 RIR`, { targetSets: 3, targetReps: 6, ...heavier, loadLabel: heavier.label, variation: 'standard' }) };
+      return { from, to: target(`3 × 8 one-and-a-half reps with the ${chosen.label}`, { targetSets: 3, targetReps: 8, ...chosen, loadLabel: chosen.label, variation: 'one-and-half' }) };
+    }
+
+    if (id === 'd2e-bss' || id === 'd2e-slrdl' || id === 'd2e-calf') {
+      const name = id === 'd2e-bss' ? 'split squats' : id === 'd2e-slrdl' ? 'single-leg RDLs' : 'calf raises';
+      const cap = id === 'd2e-calf' ? 20 : 12; const increment = id === 'd2e-calf' ? 3 : 2; const available = lowerBodyLoad(equipment);
+      if (state === 'REGRESS') return { from, to: target(`2 × ${Math.max(6, minReps - 2)} ${name}, bodyweight with support and a shorter pain-free range`, { targetSets: 2, targetReps: Math.max(6, minReps - 2), implement: 'bodyweight', variation: 'supported' }) };
+      if (!currentKg && minReps < cap) return { from, to: target(`${sets} × ${Math.min(cap, minReps + increment)} ${name}, bodyweight`, { targetSets: sets, targetReps: Math.min(cap, minReps + increment), implement: 'bodyweight', variation: 'standard' }) };
+      if (!currentKg && available) {
+        const carry = available.implement === 'kettlebell' ? (id === 'd2e-bss' ? ' in a suitcase hold on the non-operated side' : id === 'd2e-slrdl' ? ' held centrally or in the non-operated hand' : ' in a suitcase hold') : '';
+        const nextReps = id === 'd2e-calf' ? 12 : 8;
+        return { from, to: target(`3 × ${nextReps} ${name} with ${available.label}${carry}; keep 3 RIR`, { targetSets: 3, targetReps: nextReps, ...available, loadLabel: available.label, variation: 'standard' }) };
+      }
+      if (currentKg && minReps < cap) return { from, to: target(`${sets} × ${Math.min(cap, minReps + increment)} ${name} with ${sameLoad}`, { targetSets: sets, targetReps: Math.min(cap, minReps + increment), loadKg: currentKg, loadLabel: sameLoad, variation: 'standard' }) };
+      return { from, to: target(`${sets} × ${minReps} ${name} with ${sameLoad}, 3-sec lowering + 1-sec pause`, { targetSets: sets, targetReps: minReps, loadKg: currentKg, loadLabel: sameLoad, variation: 'tempo' }) };
+    }
+
+    if (id === 'd3e-pullup-single' || id === 'd3e-scap-pull') {
+      const pullup = id === 'd3e-pullup-single'; const movement = pullup ? 'pull-ups' : 'scapular pull-ups';
+      if (!equipment.pullUpBar) {
+        const band = bandFor({ load: actualLoad }, equipment); if (band) return { from, to: target(`3 × ${state === 'REGRESS' ? 8 : 10} kneeling lat pulldowns with ${band}`, { targetSets: 3, targetReps: state === 'REGRESS' ? 8 : 10, implement: 'band', loadLabel: band, variation: 'lat-pulldown' }) };
+        return { from, to: target(`3 × ${state === 'REGRESS' ? 6 : 8} prone W pulls, bodyweight`, { targetSets: 3, targetReps: state === 'REGRESS' ? 6 : 8, implement: 'bodyweight', variation: 'prone-w' }) };
+      }
+      const band = bandFor({ load: actualLoad }, equipment, state === 'REGRESS'); const assistance = state === 'REGRESS' && band ? `${band} assistance` : actualLoad || (band ? `${band} assistance` : 'bodyweight');
+      if (state === 'REGRESS') return { from, to: target(`3 × ${pullup ? 1 : Math.max(5, minReps - 2)} ${movement} with ${assistance}; stop at 4 RIR`, { targetSets: 3, targetReps: pullup ? 1 : Math.max(5, minReps - 2), implement: 'pull-up bar', loadLabel: assistance, variation: 'assisted' }) };
+      if (pullup) {
+        const currentBand = equipment.bands.find(label => assistance.toLowerCase().includes(label.toLowerCase())); const bandIndex = equipment.bands.indexOf(currentBand);
+        if (totalReps >= 9 && bandIndex > 0) { const lighter = equipment.bands[bandIndex - 1]; return { from, to: target(`3 sets of 2 / 2 / 1 pull-ups with ${lighter} assistance; stop at 3 RIR`, { targetSets: 3, targetReps: [2, 2, 1], implement: 'pull-up bar', loadLabel: `${lighter} assistance`, variation: 'assisted' }) }; }
+        const next = Math.max(4, totalReps + 1); const split = distribute(next);
+        return { from, to: target(`3 sets of ${split.join(' / ')} ${movement} with ${assistance}; stop at 3 RIR`, { targetSets: 3, targetReps: split, implement: 'pull-up bar', loadLabel: assistance, variation: band ? 'assisted' : 'bodyweight' }) };
+      }
+      const next = Math.min(12, minReps + 1); return { from, to: target(`3 × ${next} ${movement} on the pull-up bar with a 2-sec top hold`, { targetSets: 3, targetReps: next, implement: 'pull-up bar', variation: 'paused' }) };
+    }
+
+    if (id === 'd3e-er' || id === 'd2m-er') {
+      const band = bandFor({ load: actualLoad }, equipment, state === 'REGRESS');
+      if (!band) return { from, to: target(`${state === 'REGRESS' ? 2 : 3} × ${state === 'REGRESS' ? 15 : 20}-sec towel external-rotation isometric at the wall`, { targetSets: state === 'REGRESS' ? 2 : 3, targetReps: state === 'REGRESS' ? 15 : 20, implement: 'bodyweight', variation: 'isometric' }) };
+      const bandIndex = equipment.bands.indexOf(band);
+      if (state === 'PROGRESS' && minReps >= 15 && prior.variation === 'tempo' && bandIndex < equipment.bands.length - 1) { const nextBand = equipment.bands[bandIndex + 1]; return { from, to: target(`2 × 10 external rotations with ${nextBand}; keep 3 RIR`, { targetSets: 2, targetReps: 10, implement: 'band', loadLabel: nextBand, variation: 'standard' }) }; }
+      const next = state === 'REGRESS' ? Math.max(8, minReps - 2) : Math.min(15, minReps + 2);
+      return { from, to: target(`${state === 'REGRESS' ? 2 : sets} × ${next} external rotations with ${band}${state === 'PROGRESS' && minReps >= 15 ? ', 3-sec return' : ''}`, { targetSets: state === 'REGRESS' ? 2 : sets, targetReps: next, implement: 'band', loadLabel: band, variation: state === 'PROGRESS' && minReps >= 15 ? 'tempo' : 'standard' }) };
+    }
+
+    if (id === 'd1e-pushup' || id === 'd1m-scap') {
+      const scap = id === 'd1m-scap'; const movement = scap ? 'scapular push-ups' : 'push-ups'; const level = actualLoad || prior.loadLabel || 'current incline';
+      if (state === 'REGRESS') return { from, to: target(`2 × ${Math.max(5, minReps - 2)} ${movement} at a higher, pain-free incline`, { targetSets: 2, targetReps: Math.max(5, minReps - 2), implement: 'bodyweight', loadLabel: 'higher incline', variation: 'incline' }) };
+      if (!scap && minReps >= 10 && !/floor/i.test(level) && prior.variation !== 'floor-exposure') return { from, to: target(`1 × 6 floor push-ups + 2 × ${minReps} at ${level}; keep 3 RIR`, { targetSets: 3, targetReps: [6, minReps, minReps], implement: 'bodyweight', loadLabel: level, variation: 'floor-exposure' }) };
+      const next = Math.min(scap ? 15 : 12, minReps + 1); const tempo = minReps >= (scap ? 15 : 12);
+      return { from, to: target(`${sets} × ${tempo ? minReps : next} ${movement} at ${level}${tempo ? ' with 3-sec lowering' : ''}`, { targetSets: sets, targetReps: tempo ? minReps : next, implement: 'bodyweight', loadLabel: level, variation: tempo ? 'tempo' : prior.variation || 'standard' }) };
+    }
+
+    if (id === 'd1m-deadbug') {
+      const next = state === 'REGRESS' ? Math.max(5, minReps - 1) : minReps + 1;
+      return { from, to: target(`${state === 'REGRESS' ? 2 : sets} × ${next} dead bugs each side, bodyweight with a 3-sec reach`, { targetSets: state === 'REGRESS' ? 2 : sets, targetReps: next, implement: 'bodyweight', variation: 'tempo' }) };
+    }
+    return { from, to: target(`${sets} × ${minReps} with ${sameLoad}`, { targetSets: sets, targetReps: minReps, loadKg: currentKg, loadLabel: sameLoad }) };
+  }
   function firstAdaptiveReview(health) {
     const sourceWeekStart = '2026-09-21'; const nextWeekStart = '2026-09-28';
-    if (health.generatedWeeks[nextWeekStart] || sessionsInWeek(health, sourceWeekStart).length < 5) return null;
-    const items = [
+    const signature = equipmentSignature(health); const existing = health.generatedWeeks[nextWeekStart];
+    if (existing?.rulesVersion === RULES_VERSION && existing.equipmentSignature === signature) return health.weeklyReviews[sourceWeekStart] || null;
+    if (sessionsInWeek(health, sourceWeekStart).length < 5) return null;
+    const baseline = [
       { id: 'd3e-pullup-single', name: 'Strict pull-up', state: 'HOLD', from: '3 singles earlier; 3 / 2 / 2 latest', to: '8–9 clean total reps across 3 sets; same variation', reason: 'Total reps improved quickly, but the latest target was marked incomplete. Keep the variation and add only modest volume.' },
       { id: 'd3e-row', name: '5 kg dumbbell row', state: 'PROGRESS', from: '3 × 8 → 3 × 10', to: '3 × 12 at the same 5 kg load', reason: 'Reps were completed and the progression changes reps only—not load.' },
       { id: 'd1e-pushup', name: 'Push-up', state: 'PROGRESS', from: 'Bench incline: 3 × 8 → 12 / 10 / 10', to: '1 controlled floor set + 2 incline back-off sets', reason: 'Incline work was completed at low effort with 2/10 during and 1/10 next-morning pain. Floor exposure remains deliberately limited.' },
@@ -139,11 +288,18 @@
       { id: 'cardio', name: 'Easy cardio', state: 'PROGRESS', from: '18 min Zone 2; 30 min bike latest', to: '32 min conversational cardio', reason: 'The 30-minute bike produced only 1/10 during and next-morning discomfort. Volume rises by under 10%.' },
       { id: 'd1m-deadbug', name: 'Dead bug', state: 'HOLD', from: '8 / 8 latest', to: '2 × 8 with slower, cleaner control', reason: 'Hold volume and prioritise trunk and shoulder position rather than adding difficulty.' }
     ];
-    return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: true });
+    const equipment = normalizeEquipment(health.settings.equipment);
+    const items = baseline.map(item => {
+      if (item.id === 'cardio') { const mode = equipment.rowingMachine ? 'rowing machine' : 'brisk walk'; return { ...item, to: `32 min on the ${mode} at conversational effort after a gradual warm-up`, minutes: 32 }; }
+      if (item.id === 'd3e-pullup-single' && equipment.pullUpBar) return { ...item, target: target(item.to, { targetSets: 3, targetReps: [3, 3, 2], implement: 'pull-up bar', loadLabel: 'bodyweight', variation: 'bodyweight' }) };
+      const next = equipmentAwarePrescription(health, sourceWeekStart, item.id, item.state);
+      return { ...item, from: next.from, to: next.to.prescription, target: next.to };
+    });
+    return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: true, equipmentSignature: signature });
   }
   function installGeneratedWeek(health, review) {
     const overrides = {};
-    for (const item of review.items) if (item.id !== 'cardio') { const config = conservativePrescription[item.id]; overrides[item.id] = { ...(config?.name ? { name: config.name } : {}), prescription: item.to || config?.[item.state.toLowerCase()] }; }
+    for (const item of review.items) if (item.id !== 'cardio') { const config = conservativePrescription[item.id]; overrides[item.id] = { ...(config?.name ? { name: config.name } : {}), ...(item.target || {}), prescription: item.to }; }
     const generatedAt = new Date().toISOString(); const days = {};
     for (let i = 0; i < 7; i++) {
       const base = clone(plans[i]); base.exerciseOverrides = Object.fromEntries(base.ids.filter(id => overrides[id]).map(id => [id, overrides[id]]));
@@ -151,18 +307,19 @@
       days[i] = base; const key = addDays(review.nextWeekStart, i); const day = dayRecord(health, key);
       if (!day.workout?.updatedAt && !Object.keys(day.workout?.exercises || {}).length) day.plan = clone(base);
     }
-    const finalReview = { ...review, generatedAt, rulesVersion: 1 };
-    health.generatedWeeks[review.nextWeekStart] = { sourceWeekStart: review.sourceWeekStart, generatedAt, rulesVersion: 1, baseline: Boolean(review.baseline), days };
+    const finalReview = { ...review, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: review.equipmentSignature || equipmentSignature(health) };
+    health.generatedWeeks[review.nextWeekStart] = { sourceWeekStart: review.sourceWeekStart, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: finalReview.equipmentSignature, baseline: Boolean(review.baseline), days };
     health.weeklyReviews[review.sourceWeekStart] = finalReview; return finalReview;
   }
   function generateNextWeek(health, sourceStart) {
     const sourceWeekStart = weekStart(sourceStart); const nextWeekStart = addDays(sourceWeekStart, 7);
     if (sourceWeekStart < health.settings.programmeStart) return null;
-    if (health.generatedWeeks[nextWeekStart]) return health.weeklyReviews[sourceWeekStart] || null;
+    const signature = equipmentSignature(health); const existing = health.generatedWeeks[nextWeekStart];
+    if (existing?.rulesVersion === RULES_VERSION && existing.equipmentSignature === signature) return health.weeklyReviews[sourceWeekStart] || null;
     const sessions = sessionsInWeek(health, sourceWeekStart);
     if (sessions.length < 5 && dateKey() < nextWeekStart) return null;
     const ids = [...new Set(sessions.flatMap(([, d]) => Object.keys(d.workout.exercises || {})))].filter(id => conservativePrescription[id]);
-    const items = ids.map(id => { const config = conservativePrescription[id]; const decision = decideExercise(health, sourceWeekStart, id, config.name); return { ...decision, from: 'This week’s recorded prescription', to: config[decision.state.toLowerCase()] }; });
+    const items = ids.map(id => { const config = conservativePrescription[id]; const decision = decideExercise(health, sourceWeekStart, id, config.name); const next = equipmentAwarePrescription(health, sourceWeekStart, id, decision.state); return { ...decision, from: next.from, to: next.to.prescription, target: next.to }; });
     const cardio = sessions.filter(([, d]) => Number(d.workout.cardioMinutes) > 0);
     if (cardio.length) {
       const easy = cardio.filter(([key]) => weekday(key) === 3); const basis = easy.length ? easy : cardio;
@@ -172,13 +329,14 @@
       const symptomFlare = cardio.some(([key, d]) => Number(d.workout.painDuring) >= 4 || Number(recoveryForWorkout(health, key)?.pain) >= 3 || recoveryForWorkout(health, key)?.status === 'worse');
       const highEffort = cardio.some(([, d]) => Number(d.workout.effort) >= 9);
       const state = severeSymptoms || symptomFlare ? 'REGRESS' : mildOrMissing || highEffort ? 'HOLD' : 'PROGRESS';
-      const minutes = state === 'PROGRESS' ? Math.max(maxMinutes + 1, Math.floor(maxMinutes * 1.1)) : maxMinutes;
-      const to = state === 'REGRESS' ? 'Reduce duration or intensity and follow the asthma action plan' : state === 'HOLD' ? `Repeat ${maxMinutes} min at conversational effort` : `${minutes} min conversational cardio (≤10% increase)`;
+      const minutes = state === 'PROGRESS' ? Math.max(maxMinutes + 1, Math.floor(maxMinutes * 1.1)) : state === 'REGRESS' ? Math.max(10, Math.floor(maxMinutes * 0.8)) : maxMinutes;
+      const mode = normalizeEquipment(health.settings.equipment).rowingMachine ? 'rowing machine' : 'brisk walk';
+      const to = state === 'REGRESS' ? `${minutes} min easy ${mode} after a gradual warm-up; follow the asthma action plan` : state === 'HOLD' ? `Repeat ${maxMinutes} min on the ${mode} at conversational effort after a gradual warm-up` : `${minutes} min on the ${mode} at conversational effort after a gradual warm-up (≤10% increase)`;
       const reason = severeSymptoms ? 'Moderate symptoms or an exercise stop were recorded.' : symptomFlare ? 'Shoulder recovery crossed the conservative limit.' : mildOrMissing ? 'Breathing was mild or not recorded, so duration is held.' : highEffort ? 'Effort was too high for an automatic aerobic progression.' : 'Breathing was symptom-free, effort was controlled and shoulder recovery stayed within limits.';
       items.push({ id: 'cardio', name: 'Easy cardio', state, from: `${maxMinutes} min recorded`, to, reason, minutes });
     }
     if (!items.length) items.push({ id: 'week', name: 'Programme', state: 'HOLD', from: 'No qualifying exercise records', to: 'Repeat the current schedule', reason: 'There was not enough exercise-level data for a safe change.' });
-    return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: false });
+    return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: false, equipmentSignature: signature });
   }
   function ensureInitialAdaptiveWeek(health) { return firstAdaptiveReview(health); }
   function ensureGeneratedWeeks(health, around = dateKey()) { ensureInitialAdaptiveWeek(health); const start = weekStart(around); generateNextWeek(health, addDays(start, -7)); generateNextWeek(health, start); }
@@ -214,6 +372,6 @@
     for (let i = 0; i < days; i++) { const key = addDays(from, i); for (const e of timeline(health, key)) { const start = new Date(`${key}T${e.time}:00`); const end = new Date(start.getTime() + Math.max(5, e.minutes) * 60000); const local = d => `${dateKey(d).replaceAll('-', '')}T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00`; lines.push('BEGIN:VEVENT', `UID:${key}-${e.id.replace(':', '')}@movestrong.local`, `DTSTAMP:${stamp}`, `DTSTART:${local(start)}`, `DTEND:${local(end)}`, `SUMMARY:${e.title}`, 'DESCRIPTION:Personal schedule. Adjust to your agreed health and training limits.'); if (['movement', 'sauna', 'checkin'].includes(e.kind)) lines.push('BEGIN:VALARM', 'TRIGGER:PT0S', 'ACTION:DISPLAY', `DESCRIPTION:${e.title}`, 'END:VALARM'); lines.push('END:VEVENT'); } }
     lines.push('END:VCALENDAR'); return lines.join('\r\n') + '\r\n';
   }
-  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, mergeHealth, mergeCloud, dayRecord, plans, planFor, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, isShoulderLoading };
+  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, mergeHealth, mergeCloud, dayRecord, plans, planFor, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, isShoulderLoading, exerciseEquipment };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.HealthModel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

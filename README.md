@@ -10,13 +10,14 @@ A local-first six-week Progressive Web App (PWA) containing the six-day Strength
 - Text-only exercise cards and guides, without exercise-mimicking pictures or animations
 - Sets, repetitions, loads/levels, per-exercise RIR, technique quality and exercise-completion tracking
 - Rest timer
-- Home-kit workouts using bands, pull-up bar, 2 × 5 kg dumbbells, and a 10 kg kettlebell
+- Editable home-equipment profile for bands, pull-up bar, rowing machine, individual dumbbell loads, and kettlebell loads
 - Skill tabs for pull-up practice, active hangs, hollow holds, straight-bar support and muscle-up prerequisites
 - Run tabs for easy run/walk, Zone 2 run/walk and controlled intervals
 - Goals page for muscle-up readiness and running benchmarks
 - Pain-during, pain-after and required-for-progression next-morning shoulder response tracking
 - Cardio breathing/asthma symptom and reliever-use tracking
 - Deterministic PROGRESS / HOLD / REGRESS weekly reviews with a reason for every change
+- Equipment-aware prescriptions that use an owned load or a specific reps, tempo, pause, 1.5-rep, assistance, or leverage progression—never a generic “next available load”
 - Automatic next-week workout generation in the calendar
 - Optional Firebase Authentication + Firestore cloud sync, while retaining offline local saves
 - Six-week completion view
@@ -111,6 +112,9 @@ Available kit assumed:
 - Pull-up bar
 - 2 × 5 kg dumbbells
 - 10 kg kettlebell
+- Rowing machine
+
+Open **You → Available home equipment** to change this list after moving, selling, or buying equipment. List each dumbbell separately (for example, `5, 5`) and name band levels from lightest to strongest. Unstarted generated workouts refresh from this profile; a workout you have begun is preserved.
 
 The pull-up bar is used only for supported hanging and band anchoring in this block. Full pull-ups, chin-ups and passive dead hangs remain excluded unless cleared and earned through symptom-free progression.
 
@@ -169,6 +173,6 @@ The app stores the Firebase refresh token, project ID and email in a separate lo
 - This is an independent plan inspired by publicly shown movement-training principles. It is not affiliated with Strength Side and does not reproduce a paid programme.
 - The app does not diagnose injury or replace surgeon/physiotherapist clearance.
 - Stop progression for sharp fracture-site or plate pain, new swelling, deformity, neurological symptoms, sudden weakness, or worsening symptoms after a fall.
-# Move Strong Health OS · version 3.1
+# Move Strong Health OS · version 3.2
 
 The calendar-first refresh is documented in [HEALTH_OS.md](HEALTH_OS.md), including data preservation, local preview, tests and notification limitations. The original programme documentation below is retained for reference; its six-week records remain accessible through Train → Original programme.
