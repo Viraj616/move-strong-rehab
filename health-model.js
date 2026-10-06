@@ -9,7 +9,7 @@
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const clone = value => JSON.parse(JSON.stringify(value));
 
-  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, upperBodyCleared: false, clearanceNotes: '' };
+  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, upperBodyCleared: true, clearanceNotes: 'Physio cleared all exercise categories; rebuild load, volume and skill complexity gradually.' };
   const defaults = () => ({ schemaVersion: 3, settings: { ...settingsDefaults }, days: {}, milestones: {}, reminderState: {}, generatedWeeks: {}, weeklyReviews: {} });
   const plans = [
     { title: 'Pull + shoulder control', short: 'Pull', kind: 'strength', minutes: 45, ids: ['d3e-warm', 'd3e-scap-pull', 'd3e-pullup-single', 'd3e-row', 'd3e-er', 'd1m-deadbug'] },
@@ -28,6 +28,10 @@
     if (!value) return base;
     if (!isObject(value) || ![2, 3].includes(value.schemaVersion) || !isObject(value.days) || !isObject(value.settings)) throw new Error('Unsupported health data');
     const result = { ...base, ...clone(value), schemaVersion: 3, settings: { ...base.settings, ...value.settings } };
+    // This is a personal programme. Current clinical status: all exercise categories are cleared,
+    // with progressive re-loading rather than category-level restrictions.
+    result.settings.upperBodyCleared = true;
+    result.settings.clearanceNotes = result.settings.clearanceNotes || base.settings.clearanceNotes;
     result.generatedWeeks = isObject(result.generatedWeeks) ? result.generatedWeeks : {};
     result.weeklyReviews = isObject(result.weeklyReviews) ? result.weeklyReviews : {};
     if (!validDate(result.settings.programmeStart)) throw new Error('Invalid programme start');
@@ -78,7 +82,10 @@
 
   function planFor(health, key) {
     const day = health.days[key];
+    // A started day is frozen to the exact plan that was active when logging began.
     if (day?.plan?.title && Array.isArray(day.plan.ids)) return day.plan;
+    const generated = health.generatedWeeks?.[weekStart(key)]?.days?.[weekday(key)];
+    if (generated?.title && Array.isArray(generated.ids)) return generated;
     const recorded = day?.workout?.complete || day?.workout?.updatedAt || Object.keys(day?.workout?.exercises || {}).length;
     if (!recorded && key < (health.settings.programmeStart || '2026-09-21')) return { title: 'Programme starts 21 September', short: 'Starts 21 Sept', kind: 'rest', minutes: 0, ids: [], pending: true };
     const override = day?.planIndex;
@@ -106,26 +113,91 @@
     if (!evidence.length) return { id, name, state: 'HOLD', reason: 'No completed exposure was recorded, so the prescription stays unchanged.', evidence: 'No completed sets' };
     const highPain = evidence.some(x => Number(x.workout.painDuring) >= 4 || Number(x.recovery?.pain) >= 3 || x.recovery?.status === 'worse' || x.recovery?.plateSymptoms);
     const poor = evidence.some(x => x.entry.technique === 'poor');
-    if (highPain || poor) return { id, name, state: 'REGRESS', reason: highPain ? 'Shoulder symptoms crossed the conservative progression limit or were worse next morning.' : 'Technique was recorded as poor; reduce the challenge until clean control returns.', evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
-    const missingRecovery = shoulder && evidence.some(x => !x.recovery?.complete); const incomplete = evidence.some(x => !x.entry.done);
-    const technique = evidence.map(x => x.entry.technique).filter(Boolean); const rirs = evidence.map(x => Number(x.entry.rir)).filter(Number.isFinite);
-    const borderline = evidence.some(x => Number(x.workout.painDuring) === 3 || Number(x.workout.effort) >= 9) || technique.some(x => x !== 'clean') || rirs.some(x => x < 2);
-    if (missingRecovery || incomplete || borderline || technique.length < evidence.length || rirs.length < evidence.length) {
-      const reason = missingRecovery ? 'Next-morning shoulder recovery is missing; progression is held until recovery is confirmed.' : incomplete ? 'The target was not fully completed, so the same movement is retained.' : borderline ? 'Technique, RIR, effort or pain was borderline, so load and variation stay unchanged.' : 'RIR or technique was not recorded for every exposure; the safe deterministic result is HOLD.';
+    if (highPain || poor) return { id, name, state: 'REGRESS', reason: highPain ? 'Symptoms crossed the progression guardrail or were worse next morning.' : 'Technique was recorded as poor; reduce the challenge until clean control returns.', evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
+
+    // Progress from the most recent exposure. Earlier good/bad sessions still contribute to flare checks,
+    // but a missing RIR from an old exposure no longer locks the movement on HOLD forever.
+    const latest = evidence[evidence.length - 1];
+    const missingRecovery = shoulder && !latest.recovery?.complete;
+    const incomplete = !latest.entry.done;
+    const hasRir = latest.entry.rir !== undefined && latest.entry.rir !== '' && Number.isFinite(Number(latest.entry.rir));
+    const technique = latest.entry.technique || '';
+    const borderline = Number(latest.workout.painDuring) === 3 || Number(latest.workout.effort) >= 9 || technique === 'okay' || (hasRir && Number(latest.entry.rir) < 2);
+    if (missingRecovery || incomplete || borderline || technique !== 'clean' || !hasRir) {
+      const reason = missingRecovery ? 'Next-morning recovery is missing; progression is held until recovery is confirmed.' : incomplete ? 'The latest target was not fully completed, so the same movement is retained.' : borderline ? 'Technique, RIR, effort or symptoms were borderline, so load and variation stay unchanged.' : 'Record clean/okay/poor technique and RIR on the latest exposure before automatic progression.';
       return { id, name, state: 'HOLD', reason, evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
     }
-    return { id, name, state: 'PROGRESS', reason: 'Target completed with clean technique, 2–4 RIR, acceptable effort and stable shoulder recovery.', evidence: `${evidence.length} qualified exposure${evidence.length > 1 ? 's' : ''}` };
+    return { id, name, state: 'PROGRESS', reason: 'Latest target completed with clean technique, 2–4 RIR, acceptable effort and stable next-morning recovery.', evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
   }
 
-  const conservativePrescription = {
-    'd3e-pullup-single': { name: 'Strict pull-up', hold: 'Accumulate 8–9 clean total reps across 3 sets; keep the same variation', progress: 'Add only 1 total clean rep across 3 sets; keep the same variation', regress: 'Use assistance and stop 3–4 reps before failure' },
-    'd3e-row': { name: 'Dumbbell row', hold: 'Repeat the same reps and load', progress: 'Add 1–2 reps per set at the same load', regress: 'Reduce reps or support the torso; keep both shoulders level' },
-    'd1e-pushup': { name: 'Push-up', hold: 'Repeat the same incline and reps', progress: 'One controlled floor set, then 2 incline back-off sets; leave at least 3 RIR', regress: 'Raise the incline and use a pain-free symmetrical range' },
-    'd2e-bss': { name: 'Bulgarian split squat', hold: 'Repeat the same reps and load', progress: 'Add 1–2 reps per set; do not add load in the same week', regress: 'Reduce range or use supported split squats' },
-    'd2e-slrdl': { name: 'Single-leg RDL', hold: 'Repeat the same reps and load', progress: 'Add 1–2 reps per set with the same support and load', regress: 'Use a kickstand stance and shorter range' },
-    'd2e-calf': { name: 'Calf raise', hold: 'Repeat the same reps', progress: 'Add up to 3 reps per set; keep load unchanged', regress: 'Use two legs and a comfortable range' },
-    'd1m-deadbug': { name: 'Dead bug', hold: 'Keep the same reps and improve control', progress: 'Add 1 rep per set only', regress: 'Shorten the lever and keep the operated arm comfortable' }
+  const adaptivePrescription = {
+    'd3e-scap-pull': { name: 'Scapular pull-up', mode: 'reps', step: 1, max: 8, min: 4 },
+    'd3e-pullup-single': { name: 'Strict pull-up', mode: 'pullup' },
+    'd3e-row': { name: 'Row', mode: 'reps', step: 1, max: 12, min: 8, loadProgression: true },
+    'd3e-er': { name: 'Band external rotation', mode: 'reps', step: 1, max: 15, min: 10, loadProgression: true },
+    'd1e-pushup': { name: 'Push-up', mode: 'pushup' },
+    'd1m-scap': { name: 'Scapular push-up', mode: 'reps', step: 1, max: 15, min: 8 },
+    'd2m-er': { name: 'Band external rotation', mode: 'reps', step: 1, max: 15, min: 10, loadProgression: true },
+    'd2e-bss': { name: 'Bulgarian split squat', mode: 'reps', step: 1, max: 12, min: 8, loadProgression: true },
+    'd2e-slrdl': { name: 'Single-leg RDL', mode: 'reps', step: 1, max: 12, min: 8, loadProgression: true },
+    'd2e-calf': { name: 'Calf raise', mode: 'reps', step: 2, max: 20, min: 12, loadProgression: true },
+    'd1m-deadbug': { name: 'Dead bug', mode: 'reps', step: 1, max: 12, min: 6 }
   };
+  const numericSets = entry => (entry?.sets || []).map(v => Number(v)).filter(v => Number.isFinite(v) && v > 0);
+  const meaningfulLoad = entry => {
+    const load = String(entry?.load || '').trim();
+    return load && !/^0(?:\.0+)?\s*(?:kg)?$/i.test(load) ? load : '';
+  };
+  function latestExerciseEvidence(health, start, id) {
+    const evidence = exerciseEvidence(health, start, id);
+    return evidence.length ? evidence[evidence.length - 1] : null;
+  }
+  function setText(values) { return values.length ? values.join(' / ') : 'recorded target'; }
+  function actualFrom(health, start, id) {
+    const latest = latestExerciseEvidence(health, start, id);
+    if (!latest) return 'No completed exposure';
+    const reps = numericSets(latest.entry); const load = meaningfulLoad(latest.entry);
+    return `${setText(reps)}${load ? ` @ ${load}` : ''}`;
+  }
+  function balancedPlusOne(values) {
+    const next = values.length ? [...values] : [1, 1, 1];
+    let index = 0;
+    for (let i = 1; i < next.length; i++) if (next[i] < next[index]) index = i;
+    next[index] += 1;
+    return next;
+  }
+  function prescriptionForDecision(health, start, id, state) {
+    const config = adaptivePrescription[id];
+    const latest = latestExerciseEvidence(health, start, id);
+    if (!config || !latest) return state === 'REGRESS' ? 'Reduce the challenge and rebuild with clean reps' : 'Repeat the current prescription';
+    const reps = numericSets(latest.entry); const load = meaningfulLoad(latest.entry);
+    const suffix = load ? ` @ ${load}` : '';
+
+    if (state === 'HOLD') return reps.length ? `Repeat ${setText(reps)}${suffix}; keep the same variation` : `Repeat the same variation${suffix}`;
+    if (state === 'REGRESS') {
+      if (config.mode === 'pullup') return 'Use assistance and target clean submaximal reps, leaving 3–4 RIR';
+      if (config.mode === 'pushup') return 'Use the next easier push-up variation and reduce reps by about 20%';
+      const reduced = reps.map(v => Math.max(1, Math.floor(v * 0.8)));
+      return reduced.length ? `${setText(reduced)}${suffix}; use an easier range/variation if needed` : 'Reduce load/range and rebuild clean control';
+    }
+
+    if (config.mode === 'pullup') {
+      const next = balancedPlusOne(reps);
+      return `${setText(next)} clean reps across ${next.length} sets${suffix}; add only 1 total rep and keep 2–3 RIR`;
+    }
+    if (config.mode === 'pushup') {
+      if (!reps.length) return 'Use the hardest clean push-up variation that leaves 2–3 RIR';
+      if (reps.every(v => v >= 12)) return `${setText(reps)} at the next harder variation (lower incline → floor → feet-elevated), keeping 2–3 RIR`;
+      return `${setText(reps.map(v => Math.min(12, v + 1)))}${suffix}; keep the same variation`;
+    }
+
+    if (!reps.length) return `Keep the same movement and add a small amount of work while retaining 2–3 RIR${suffix}`;
+    if (config.loadProgression && reps.every(v => v >= config.max)) {
+      return `${config.min}–${Math.min(config.max, config.min + 2)} reps per set at the next available load/resistance; do not also add sets`;
+    }
+    return `${setText(reps.map(v => Math.min(config.max, v + config.step)))}${suffix}; keep the same load/variation`;
+  }
+
   function firstAdaptiveReview(health) {
     const sourceWeekStart = '2026-09-21'; const nextWeekStart = '2026-09-28';
     if (health.generatedWeeks[nextWeekStart] || sessionsInWeek(health, sourceWeekStart).length < 5) return null;
@@ -141,28 +213,75 @@
     ];
     return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: true });
   }
+  function sourceFingerprint(health, start) {
+    return JSON.stringify(Array.from({ length: 7 }, (_, i) => {
+      const key = addDays(start, i); const d = health.days[key] || {}; const w = d.workout || {};
+      return {
+        key,
+        workout: {
+          complete: Boolean(w.complete), painDuring: w.painDuring || '', painNext: w.painNext || '', effort: w.effort || '',
+          cardioMinutes: w.cardioMinutes || '', breathingSymptoms: w.breathingSymptoms || '', relieverUsed: w.relieverUsed || '',
+          exercises: w.exercises || {}
+        },
+        recovery: recoveryForWorkout(health, key)
+      };
+    }));
+  }
+  function weekHasWorkoutActivity(health, start) {
+    return Array.from({ length: 7 }, (_, i) => health.days[addDays(start, i)]?.workout)
+      .some(w => w?.updatedAt || w?.complete || Object.keys(w?.exercises || {}).length);
+  }
   function installGeneratedWeek(health, review) {
     const overrides = {};
-    for (const item of review.items) if (item.id !== 'cardio') { const config = conservativePrescription[item.id]; overrides[item.id] = { ...(config?.name ? { name: config.name } : {}), prescription: item.to || config?.[item.state.toLowerCase()] }; }
-    const generatedAt = new Date().toISOString(); const days = {};
-    for (let i = 0; i < 7; i++) {
-      const base = clone(plans[i]); base.exerciseOverrides = Object.fromEntries(base.ids.filter(id => overrides[id]).map(id => [id, overrides[id]]));
-      if (i === 3) base.minutes = review.items.find(item => item.id === 'cardio')?.minutes || (review.baseline ? 32 : base.minutes);
-      days[i] = base; const key = addDays(review.nextWeekStart, i); const day = dayRecord(health, key);
-      if (!day.workout?.updatedAt && !Object.keys(day.workout?.exercises || {}).length) day.plan = clone(base);
+    for (const item of review.items) if (item.id !== 'cardio' && item.id !== 'week') {
+      const config = adaptivePrescription[item.id];
+      overrides[item.id] = { ...(config?.name ? { name: config.name } : {}), prescription: item.to };
     }
-    const finalReview = { ...review, generatedAt, rulesVersion: 1 };
-    health.generatedWeeks[review.nextWeekStart] = { sourceWeekStart: review.sourceWeekStart, generatedAt, rulesVersion: 1, baseline: Boolean(review.baseline), days };
-    health.weeklyReviews[review.sourceWeekStart] = finalReview; return finalReview;
+    const generatedAt = new Date().toISOString(); const days = {};
+    const previousGenerated = health.generatedWeeks[review.nextWeekStart];
+    for (let i = 0; i < 7; i++) {
+      const base = clone(plans[i]);
+      base.exerciseOverrides = Object.fromEntries(base.ids.filter(id => overrides[id]).map(id => [id, overrides[id]]));
+      if (i === 3) base.minutes = review.items.find(item => item.id === 'cardio')?.minutes || (review.baseline ? 32 : base.minutes);
+      days[i] = base;
+      const key = addDays(review.nextWeekStart, i); const day = dayRecord(health, key);
+      const started = day.workout?.updatedAt || day.workout?.complete || Object.keys(day.workout?.exercises || {}).length;
+      if (started) {
+        // Never rewrite a session after the user has begun logging it.
+        if (!day.plan?.title) day.plan = clone(previousGenerated?.days?.[i] || plans[i]);
+      } else {
+        day.plan = clone(base);
+      }
+    }
+    const finalReview = { ...review, generatedAt, rulesVersion: 2 };
+    health.generatedWeeks[review.nextWeekStart] = {
+      sourceWeekStart: review.sourceWeekStart, sourceFingerprint: review.sourceFingerprint,
+      generatedAt, rulesVersion: 2, baseline: Boolean(review.baseline), days
+    };
+    health.weeklyReviews[review.sourceWeekStart] = finalReview;
+    return finalReview;
   }
   function generateNextWeek(health, sourceStart) {
     const sourceWeekStart = weekStart(sourceStart); const nextWeekStart = addDays(sourceWeekStart, 7);
     if (sourceWeekStart < health.settings.programmeStart) return null;
-    if (health.generatedWeeks[nextWeekStart]) return health.weeklyReviews[sourceWeekStart] || null;
     const sessions = sessionsInWeek(health, sourceWeekStart);
-    if (sessions.length < 5 && dateKey() < nextWeekStart) return null;
-    const ids = [...new Set(sessions.flatMap(([, d]) => Object.keys(d.workout.exercises || {})))].filter(id => conservativePrescription[id]);
-    const items = ids.map(id => { const config = conservativePrescription[id]; const decision = decideExercise(health, sourceWeekStart, id, config.name); return { ...decision, from: 'This week’s recorded prescription', to: config[decision.state.toLowerCase()] }; });
+    const fingerprint = sourceFingerprint(health, sourceWeekStart);
+    const existing = health.generatedWeeks[nextWeekStart];
+    const existingReview = health.weeklyReviews[sourceWeekStart] || null;
+
+    // V2 plans are immutable after the following week has started. Before that, they refresh whenever
+    // source-week data changes. V1 plans are upgraded once, preserving any already-started day.
+    if (existing?.rulesVersion >= 2 && weekHasWorkoutActivity(health, nextWeekStart)) return existingReview;
+    if (existing?.rulesVersion >= 2 && existing.sourceFingerprint === fingerprint) return existingReview;
+    if (sessions.length < 5 && dateKey() < nextWeekStart) return existingReview;
+
+    const ids = [...new Set(sessions.flatMap(([, d]) => Object.keys(d.workout.exercises || {})))].filter(id => adaptivePrescription[id]);
+    const items = ids.map(id => {
+      const config = adaptivePrescription[id];
+      const decision = decideExercise(health, sourceWeekStart, id, config.name);
+      return { ...decision, from: actualFrom(health, sourceWeekStart, id), to: prescriptionForDecision(health, sourceWeekStart, id, decision.state) };
+    });
+
     const cardio = sessions.filter(([, d]) => Number(d.workout.cardioMinutes) > 0);
     if (cardio.length) {
       const easy = cardio.filter(([key]) => weekday(key) === 3); const basis = easy.length ? easy : cardio;
@@ -173,15 +292,20 @@
       const highEffort = cardio.some(([, d]) => Number(d.workout.effort) >= 9);
       const state = severeSymptoms || symptomFlare ? 'REGRESS' : mildOrMissing || highEffort ? 'HOLD' : 'PROGRESS';
       const minutes = state === 'PROGRESS' ? Math.max(maxMinutes + 1, Math.floor(maxMinutes * 1.1)) : maxMinutes;
-      const to = state === 'REGRESS' ? 'Reduce duration or intensity and follow the asthma action plan' : state === 'HOLD' ? `Repeat ${maxMinutes} min at conversational effort` : `${minutes} min conversational cardio (≤10% increase)`;
-      const reason = severeSymptoms ? 'Moderate symptoms or an exercise stop were recorded.' : symptomFlare ? 'Shoulder recovery crossed the conservative limit.' : mildOrMissing ? 'Breathing was mild or not recorded, so duration is held.' : highEffort ? 'Effort was too high for an automatic aerobic progression.' : 'Breathing was symptom-free, effort was controlled and shoulder recovery stayed within limits.';
+      const to = state === 'REGRESS' ? 'Reduce duration/intensity and follow the asthma action plan' : state === 'HOLD' ? `Repeat ${maxMinutes} min at conversational effort` : `${minutes} min conversational cardio (≤10% increase)`;
+      const reason = severeSymptoms ? 'Moderate symptoms or an exercise stop were recorded.' : symptomFlare ? 'Recovery crossed the symptom guardrail.' : mildOrMissing ? 'Breathing was mild or not recorded, so duration is held.' : highEffort ? 'Effort was too high for an automatic aerobic progression.' : 'Breathing was symptom-free, effort was controlled and recovery stayed within limits.';
       items.push({ id: 'cardio', name: 'Easy cardio', state, from: `${maxMinutes} min recorded`, to, reason, minutes });
     }
     if (!items.length) items.push({ id: 'week', name: 'Programme', state: 'HOLD', from: 'No qualifying exercise records', to: 'Repeat the current schedule', reason: 'There was not enough exercise-level data for a safe change.' });
-    return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: false });
+    return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, sourceFingerprint: fingerprint, items, baseline: false });
   }
   function ensureInitialAdaptiveWeek(health) { return firstAdaptiveReview(health); }
-  function ensureGeneratedWeeks(health, around = dateKey()) { ensureInitialAdaptiveWeek(health); const start = weekStart(around); generateNextWeek(health, addDays(start, -7)); generateNextWeek(health, start); }
+  function ensureGeneratedWeeks(health, around = dateKey()) {
+    ensureInitialAdaptiveWeek(health);
+    const start = weekStart(around);
+    generateNextWeek(health, addDays(start, -7));
+    generateNextWeek(health, start);
+  }
 
   function shift(time, minutes) { const [h, m] = time.split(':').map(Number); const n = (h * 60 + m + minutes + 1440) % 1440; return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`; }
   function timeline(health, key) {
