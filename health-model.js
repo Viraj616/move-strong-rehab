@@ -9,9 +9,9 @@
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const clone = value => JSON.parse(JSON.stringify(value));
 
-  const RULES_VERSION = 2;
+  const RULES_VERSION = 3;
   const equipmentDefaults = { pullUpBar: true, bands: ['Unlabelled band'], dumbbellsKg: [5, 5], kettlebellsKg: [10], rowingMachine: true };
-  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, upperBodyCleared: false, clearanceNotes: '', equipment: equipmentDefaults };
+  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, upperBodyCleared: true, clearanceNotes: 'Physio cleared all exercise categories; rebuild load, volume and skill complexity gradually.', equipment: equipmentDefaults };
   function normalizeEquipment(value) {
     const source = isObject(value) ? value : equipmentDefaults;
     const loads = key => Array.isArray(source[key]) ? source[key].map(Number).filter(n => Number.isFinite(n) && n > 0 && n <= 200).slice(0, 20).sort((a, b) => a - b) : clone(equipmentDefaults[key]);
@@ -36,6 +36,8 @@
     if (!value) return base;
     if (!isObject(value) || ![2, 3, 4].includes(value.schemaVersion) || !isObject(value.days) || !isObject(value.settings)) throw new Error('Unsupported health data');
     const result = { ...base, ...clone(value), schemaVersion: 4, settings: { ...base.settings, ...value.settings, equipment: normalizeEquipment(value.settings.equipment) } };
+    result.settings.upperBodyCleared = true;
+    result.settings.clearanceNotes = result.settings.clearanceNotes || base.settings.clearanceNotes;
     result.generatedWeeks = isObject(result.generatedWeeks) ? result.generatedWeeks : {};
     result.weeklyReviews = isObject(result.weeklyReviews) ? result.weeklyReviews : {};
     if (!validDate(result.settings.programmeStart)) throw new Error('Invalid programme start');
@@ -87,7 +89,10 @@
 
   function planFor(health, key) {
     const day = health.days[key];
+    // A started day is frozen to the exact plan that was active when logging began.
     if (day?.plan?.title && Array.isArray(day.plan.ids)) return day.plan;
+    const generated = health.generatedWeeks?.[weekStart(key)]?.days?.[weekday(key)];
+    if (generated?.title && Array.isArray(generated.ids)) return generated;
     const recorded = day?.workout?.complete || day?.workout?.updatedAt || Object.keys(day?.workout?.exercises || {}).length;
     if (!recorded && key < (health.settings.programmeStart || '2026-09-21')) return { title: 'Programme starts 21 September', short: 'Starts 21 Sept', kind: 'rest', minutes: 0, ids: [], pending: true };
     const override = day?.planIndex;
@@ -115,15 +120,17 @@
     if (!evidence.length) return { id, name, state: 'HOLD', reason: 'No completed exposure was recorded, so the prescription stays unchanged.', evidence: 'No completed sets' };
     const highPain = evidence.some(x => Number(x.workout.painDuring) >= 4 || Number(x.recovery?.pain) >= 3 || x.recovery?.status === 'worse' || x.recovery?.plateSymptoms);
     const poor = evidence.some(x => x.entry.technique === 'poor');
-    if (highPain || poor) return { id, name, state: 'REGRESS', reason: highPain ? 'Shoulder symptoms crossed the conservative progression limit or were worse next morning.' : 'Technique was recorded as poor; reduce the challenge until clean control returns.', evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
-    const missingRecovery = shoulder && evidence.some(x => !x.recovery?.complete); const incomplete = evidence.some(x => !x.entry.done);
-    const technique = evidence.map(x => x.entry.technique).filter(Boolean); const rirs = evidence.map(x => Number(x.entry.rir)).filter(Number.isFinite);
-    const borderline = evidence.some(x => Number(x.workout.painDuring) === 3 || Number(x.workout.effort) >= 9) || technique.some(x => x !== 'clean') || rirs.some(x => x < 2);
-    if (missingRecovery || incomplete || borderline || technique.length < evidence.length || rirs.length < evidence.length) {
-      const reason = missingRecovery ? 'Next-morning shoulder recovery is missing; progression is held until recovery is confirmed.' : incomplete ? 'The target was not fully completed, so the same movement is retained.' : borderline ? 'Technique, RIR, effort or pain was borderline, so load and variation stay unchanged.' : 'RIR or technique was not recorded for every exposure; the safe deterministic result is HOLD.';
+    if (highPain || poor) return { id, name, state: 'REGRESS', reason: highPain ? 'Symptoms crossed the progression guardrail or were worse next morning.' : 'Technique was recorded as poor; reduce the challenge until clean control returns.', evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
+    const latest = evidence[evidence.length - 1];
+    const missingRecovery = shoulder && !latest.recovery?.complete; const incomplete = !latest.entry.done;
+    const hasRir = latest.entry.rir !== undefined && latest.entry.rir !== '' && Number.isFinite(Number(latest.entry.rir));
+    const technique = latest.entry.technique || '';
+    const borderline = Number(latest.workout.painDuring) === 3 || Number(latest.workout.effort) >= 9 || technique === 'okay' || (hasRir && Number(latest.entry.rir) < 2);
+    if (missingRecovery || incomplete || borderline || technique !== 'clean' || !hasRir) {
+      const reason = missingRecovery ? 'Next-morning recovery is missing; progression is held until recovery is confirmed.' : incomplete ? 'The latest target was not fully completed, so the same movement is retained.' : borderline ? 'Technique, RIR, effort or symptoms were borderline, so load and variation stay unchanged.' : 'Record clean/okay/poor technique and RIR on the latest exposure before automatic progression.';
       return { id, name, state: 'HOLD', reason, evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
     }
-    return { id, name, state: 'PROGRESS', reason: 'Target completed with clean technique, 2–4 RIR, acceptable effort and stable shoulder recovery.', evidence: `${evidence.length} qualified exposure${evidence.length > 1 ? 's' : ''}` };
+    return { id, name, state: 'PROGRESS', reason: 'Latest target completed with clean technique, 2–4 RIR, acceptable effort and stable next-morning recovery.', evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
   }
 
   const conservativePrescription = {
@@ -297,27 +304,55 @@
     });
     return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: true, equipmentSignature: signature });
   }
+  function sourceFingerprint(health, start) {
+    return JSON.stringify(Array.from({ length: 7 }, (_, i) => {
+      const key = addDays(start, i); const d = health.days[key] || {}; const w = d.workout || {};
+      return {
+        key,
+        workout: {
+          complete: Boolean(w.complete), painDuring: w.painDuring || '', painNext: w.painNext || '', effort: w.effort || '',
+          cardioMinutes: w.cardioMinutes || '', breathingSymptoms: w.breathingSymptoms || '', relieverUsed: w.relieverUsed || '', exercises: w.exercises || {}
+        },
+        recovery: recoveryForWorkout(health, key)
+      };
+    }));
+  }
+  function weekHasWorkoutActivity(health, start) {
+    return Array.from({ length: 7 }, (_, i) => health.days[addDays(start, i)]?.workout)
+      .some(workout => workout?.updatedAt || workout?.complete || Object.keys(workout?.exercises || {}).length);
+  }
   function installGeneratedWeek(health, review) {
     const overrides = {};
-    for (const item of review.items) if (item.id !== 'cardio') { const config = conservativePrescription[item.id]; overrides[item.id] = { ...(config?.name ? { name: config.name } : {}), ...(item.target || {}), prescription: item.to }; }
+    for (const item of review.items) if (item.id !== 'cardio' && item.id !== 'week') { const config = conservativePrescription[item.id]; overrides[item.id] = { ...(config?.name ? { name: config.name } : {}), ...(item.target || {}), prescription: item.to }; }
     const generatedAt = new Date().toISOString(); const days = {};
+    const previousGenerated = health.generatedWeeks[review.nextWeekStart];
     for (let i = 0; i < 7; i++) {
       const base = clone(plans[i]); base.exerciseOverrides = Object.fromEntries(base.ids.filter(id => overrides[id]).map(id => [id, overrides[id]]));
       if (i === 3) base.minutes = review.items.find(item => item.id === 'cardio')?.minutes || (review.baseline ? 32 : base.minutes);
-      days[i] = base; const key = addDays(review.nextWeekStart, i); const day = dayRecord(health, key);
-      if (!day.workout?.updatedAt && !Object.keys(day.workout?.exercises || {}).length) day.plan = clone(base);
+      days[i] = base;
+      const key = addDays(review.nextWeekStart, i); const day = dayRecord(health, key);
+      const started = day.workout?.updatedAt || day.workout?.complete || Object.keys(day.workout?.exercises || {}).length;
+      if (started) {
+        if (!day.plan?.title) day.plan = clone(previousGenerated?.days?.[i] || plans[i]);
+      } else {
+        day.plan = clone(base);
+      }
     }
-    const finalReview = { ...review, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: review.equipmentSignature || equipmentSignature(health) };
-    health.generatedWeeks[review.nextWeekStart] = { sourceWeekStart: review.sourceWeekStart, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: finalReview.equipmentSignature, baseline: Boolean(review.baseline), days };
+    const fingerprint = review.sourceFingerprint || sourceFingerprint(health, review.sourceWeekStart);
+    const finalReview = { ...review, sourceFingerprint: fingerprint, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: review.equipmentSignature || equipmentSignature(health) };
+    health.generatedWeeks[review.nextWeekStart] = { sourceWeekStart: review.sourceWeekStart, sourceFingerprint: fingerprint, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: finalReview.equipmentSignature, baseline: Boolean(review.baseline), days };
     health.weeklyReviews[review.sourceWeekStart] = finalReview; return finalReview;
   }
   function generateNextWeek(health, sourceStart) {
     const sourceWeekStart = weekStart(sourceStart); const nextWeekStart = addDays(sourceWeekStart, 7);
     if (sourceWeekStart < health.settings.programmeStart) return null;
-    const signature = equipmentSignature(health); const existing = health.generatedWeeks[nextWeekStart];
-    if (existing?.rulesVersion === RULES_VERSION && existing.equipmentSignature === signature) return health.weeklyReviews[sourceWeekStart] || null;
     const sessions = sessionsInWeek(health, sourceWeekStart);
-    if (sessions.length < 5 && dateKey() < nextWeekStart) return null;
+    const fingerprint = sourceFingerprint(health, sourceWeekStart); const signature = equipmentSignature(health);
+    const existing = health.generatedWeeks[nextWeekStart]; const existingReview = health.weeklyReviews[sourceWeekStart] || null;
+    const followingWeekStarted = weekHasWorkoutActivity(health, nextWeekStart);
+    if (existing?.rulesVersion === RULES_VERSION && followingWeekStarted && existing.equipmentSignature === signature) return existingReview;
+    if (existing?.rulesVersion === RULES_VERSION && existing.sourceFingerprint === fingerprint && existing.equipmentSignature === signature) return existingReview;
+    if (sessions.length < 5 && dateKey() < nextWeekStart) return existingReview;
     const ids = [...new Set(sessions.flatMap(([, d]) => Object.keys(d.workout.exercises || {})))].filter(id => conservativePrescription[id]);
     const items = ids.map(id => { const config = conservativePrescription[id]; const decision = decideExercise(health, sourceWeekStart, id, config.name); const next = equipmentAwarePrescription(health, sourceWeekStart, id, decision.state); return { ...decision, from: next.from, to: next.to.prescription, target: next.to }; });
     const cardio = sessions.filter(([, d]) => Number(d.workout.cardioMinutes) > 0);
@@ -336,7 +371,7 @@
       items.push({ id: 'cardio', name: 'Easy cardio', state, from: `${maxMinutes} min recorded`, to, reason, minutes });
     }
     if (!items.length) items.push({ id: 'week', name: 'Programme', state: 'HOLD', from: 'No qualifying exercise records', to: 'Repeat the current schedule', reason: 'There was not enough exercise-level data for a safe change.' });
-    return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: false, equipmentSignature: signature });
+    return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, sourceFingerprint: fingerprint, items, baseline: false, equipmentSignature: signature });
   }
   function ensureInitialAdaptiveWeek(health) { return firstAdaptiveReview(health); }
   function ensureGeneratedWeeks(health, around = dateKey()) { ensureInitialAdaptiveWeek(health); const start = weekStart(around); generateNextWeek(health, addDays(start, -7)); generateNextWeek(health, start); }

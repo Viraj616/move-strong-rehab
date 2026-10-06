@@ -157,6 +157,83 @@ test('cardio progression is symptom-aware and capped at ten percent', () => {
   assert.equal(M.planFor(data, '2026-10-15').minutes, 33);
 });
 
+
+test('adaptive generation uses the latest logged reps to create a concrete next target', () => {
+  const data = M.defaults();
+  const start = '2026-10-05';
+  const rows = [
+    ['2026-10-05', ['10', '10', '10']],
+    ['2026-10-07', ['11', '11', '11']],
+    ['2026-10-09', ['12', '12', '12']]
+  ];
+  for (const [key, sets] of rows) {
+    M.dayRecord(data, key).workout = {
+      complete: true, painDuring: '1', effort: '6',
+      exercises: { 'd3e-row': { done: true, sets, load: '5kg', rir: '3', technique: 'clean' } },
+      updatedAt: `${key}T08:00:00Z`
+    };
+    M.dayRecord(data, M.addDays(key, 1)).recovery.previousWorkout = {
+      workoutDate: key, pain: '1', status: 'same', complete: true
+    };
+  }
+  // Two additional completed sessions make the week eligible for generation.
+  for (const key of ['2026-10-06', '2026-10-08']) {
+    M.dayRecord(data, key).workout = { complete: true, painDuring: '0', effort: '6', exercises: {}, updatedAt: `${key}T08:00:00Z` };
+  }
+  const review = M.generateNextWeek(data, start);
+  const row = review.items.find(item => item.id === 'd3e-row');
+  assert.equal(row.state, 'PROGRESS');
+  assert.match(row.from, /3 × 12 · 5kg/);
+  assert.match(row.to, /5 kg dumbbell, 3-sec lowering \+ 1-sec top pause/);
+  assert.match(M.planFor(data, '2026-10-12').exerciseOverrides['d3e-row'].prescription, /5 kg dumbbell, 3-sec lowering \+ 1-sec top pause/);
+  assert.doesNotMatch(row.to, /next available load\/resistance/i);
+});
+
+test('stale v1 generated weeks refresh before the following week is started', () => {
+  const data = M.defaults();
+  const source = '2026-10-05';
+  for (let i = 0; i < 5; i++) {
+    const key = M.addDays(source, i);
+    M.dayRecord(data, key).workout = {
+      complete: true, painDuring: '1', painNext: '1', effort: '6',
+      exercises: i === 0 ? { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5kg', rir: '3', technique: 'clean' } } : {},
+      updatedAt: `${key}T08:00:00Z`
+    };
+    if (i === 0) M.dayRecord(data, M.addDays(key, 1)).recovery.previousWorkout = { workoutDate: key, pain: '1', status: 'same', complete: true };
+  }
+  data.generatedWeeks['2026-10-12'] = {
+    sourceWeekStart: source, generatedAt: '2026-10-10T00:00:00Z', rulesVersion: 1,
+    days: { 0: { ...M.plans[0], exerciseOverrides: {} } }
+  };
+  const before = M.planFor(data, '2026-10-12');
+  assert.equal(before.exerciseOverrides?.['d3e-row'], undefined);
+  M.ensureGeneratedWeeks(data, '2026-10-12');
+  const after = M.planFor(data, '2026-10-12');
+  assert.ok(after.exerciseOverrides['d3e-row']);
+  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 3);
+});
+
+test('started days are preserved while later days of a refreshed week can update', () => {
+  const data = M.defaults();
+  const source = '2026-10-05';
+  for (let i = 0; i < 5; i++) {
+    const key = M.addDays(source, i);
+    M.dayRecord(data, key).workout = {
+      complete: true, painDuring: '1', painNext: '1', effort: '6',
+      exercises: i === 0 ? { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5kg', rir: '3', technique: 'clean' } } : {},
+      updatedAt: `${key}T08:00:00Z`
+    };
+    if (i === 0) M.dayRecord(data, M.addDays(key, 1)).recovery.previousWorkout = { workoutDate: key, pain: '1', status: 'same', complete: true };
+  }
+  const monday = M.dayRecord(data, '2026-10-12');
+  monday.workout = { complete: false, exercises: { 'd3e-row': { sets: ['8'], load: '5kg' } }, updatedAt: '2026-10-12T07:30:00Z' };
+  monday.plan = { ...M.plans[0], exerciseOverrides: { 'd3e-row': { prescription: 'started-plan' } } };
+
+  M.ensureGeneratedWeeks(data, '2026-10-12');
+  assert.equal(M.planFor(data, '2026-10-12').exerciseOverrides['d3e-row'].prescription, 'started-plan');
+  assert.ok(data.generatedWeeks['2026-10-12'].days[4].exerciseOverrides['d3e-row']);
+});
+
 test('cloud merge restores remote settings on an empty device and keeps newest workouts', () => {
   const remote = M.defaults(); remote.settings.workout = '08:00';
   M.dayRecord(remote, '2026-10-05').workout = { complete: true, exercises: { row: { sets: ['10'] } }, updatedAt: '2026-10-05T08:00:00Z' };
