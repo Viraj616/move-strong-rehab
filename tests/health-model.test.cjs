@@ -157,6 +157,35 @@ test('cardio progression is symptom-aware and capped at ten percent', () => {
   assert.equal(M.planFor(data, '2026-10-15').minutes, 33);
 });
 
+test('weekly review snapshot is bounded, equipment-aware and excludes free-text notes', () => {
+  const data = M.defaults(); data.settings.aiWeeklyReview = true;
+  addQualifiedWeek(data, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
+  data.days['2026-10-05'].recovery.notes = 'private journal text';
+  const snapshot = M.weeklyReviewSnapshot(data, '2026-10-05', '2026-10-09');
+  assert.equal(snapshot.ready, true);
+  assert.deepEqual(snapshot.equipment.dumbbellsKg, [5, 5]);
+  assert.equal(snapshot.days.length, 7);
+  assert.match(JSON.stringify(snapshot), /d3e-row/);
+  assert.doesNotMatch(JSON.stringify(snapshot), /private journal text|notes/);
+});
+
+test('Codex review remains a draft until explicit approval and rejects stale workout data', () => {
+  const data = M.defaults();
+  addQualifiedWeek(data, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
+  const snapshot = M.weeklyReviewSnapshot(data, '2026-10-05', '2026-10-09');
+  const value = { sourceWeekStart: snapshot.sourceWeekStart, nextWeekStart: snapshot.nextWeekStart, sourceFingerprint: snapshot.sourceFingerprint, summary: 'Hold loading conservative.', items: [{ id: 'd3e-row', name: 'Row', state: 'PROGRESS', from: '3 × 12 at 5 kg', to: '3 × 12 at 5 kg with a pause', reason: 'Clean work with stable symptoms; change tempo only.', target: { targetSets: 3, targetReps: 12, implement: 'dumbbell', loadKg: 5, loadLabel: '5 kg dumbbell', variation: 'paused' } }] };
+  M.storeReviewedDraft(data, value);
+  assert.equal(data.reviewDrafts['2026-10-12'].status, 'draft');
+  assert.equal(data.generatedWeeks['2026-10-12'], undefined);
+  M.approveReviewedDraft(data, '2026-10-12');
+  assert.equal(data.reviewDrafts['2026-10-12'].status, 'approved');
+  assert.match(M.planFor(data, '2026-10-12').exerciseOverrides['d3e-row'].prescription, /pause/);
+
+  const stale = M.defaults(); addQualifiedWeek(stale, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
+  M.storeReviewedDraft(stale, value); stale.days['2026-10-05'].workout.exercises['d3e-row'].sets[0] = '13';
+  assert.throws(() => M.approveReviewedDraft(stale, '2026-10-12'), /changed/);
+});
+
 
 test('adaptive generation uses the latest logged reps to create a concrete next target', () => {
   const data = M.defaults();

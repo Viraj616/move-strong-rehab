@@ -11,14 +11,14 @@
 
   const RULES_VERSION = 3;
   const equipmentDefaults = { pullUpBar: true, bands: ['Unlabelled band'], dumbbellsKg: [5, 5], kettlebellsKg: [10], rowingMachine: true };
-  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, upperBodyCleared: true, clearanceNotes: 'Physio cleared all exercise categories; rebuild load, volume and skill complexity gradually.', equipment: equipmentDefaults };
+  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, aiWeeklyReview: false, upperBodyCleared: true, clearanceNotes: 'Physio cleared all exercise categories; rebuild load, volume and skill complexity gradually.', equipment: equipmentDefaults };
   function normalizeEquipment(value) {
     const source = isObject(value) ? value : equipmentDefaults;
     const loads = key => Array.isArray(source[key]) ? source[key].map(Number).filter(n => Number.isFinite(n) && n > 0 && n <= 200).slice(0, 20).sort((a, b) => a - b) : clone(equipmentDefaults[key]);
     const bands = Array.isArray(source.bands) ? [...new Set(source.bands.map(v => String(v).trim()).filter(Boolean))].slice(0, 10) : clone(equipmentDefaults.bands);
     return { pullUpBar: source.pullUpBar !== false, bands, dumbbellsKg: loads('dumbbellsKg'), kettlebellsKg: loads('kettlebellsKg'), rowingMachine: source.rowingMachine !== false };
   }
-  const defaults = () => ({ schemaVersion: 4, settings: { ...settingsDefaults, equipment: normalizeEquipment(equipmentDefaults) }, days: {}, milestones: {}, reminderState: {}, generatedWeeks: {}, weeklyReviews: {} });
+  const defaults = () => ({ schemaVersion: 4, settings: { ...settingsDefaults, equipment: normalizeEquipment(equipmentDefaults) }, days: {}, milestones: {}, reminderState: {}, generatedWeeks: {}, weeklyReviews: {}, reviewDrafts: {} });
   const plans = [
     { title: 'Pull + shoulder control', short: 'Pull', kind: 'strength', minutes: 45, ids: ['d3e-warm', 'd3e-scap-pull', 'd3e-pullup-single', 'd3e-row', 'd3e-er', 'd1m-deadbug'] },
     { title: 'Legs + aerobic base', short: 'Legs', kind: 'strength', minutes: 45, ids: ['d2e-warm', 'd2e-bss', 'd2e-slrdl', 'd2e-calf', 'd2e-zone2'] },
@@ -40,6 +40,7 @@
     result.settings.clearanceNotes = result.settings.clearanceNotes || base.settings.clearanceNotes;
     result.generatedWeeks = isObject(result.generatedWeeks) ? result.generatedWeeks : {};
     result.weeklyReviews = isObject(result.weeklyReviews) ? result.weeklyReviews : {};
+    result.reviewDrafts = isObject(result.reviewDrafts) ? result.reviewDrafts : {};
     if (!validDate(result.settings.programmeStart)) throw new Error('Invalid programme start');
     for (const key of ['wake', 'workout', 'work', 'windDown', 'bedtime', 'saunaTime']) if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(result.settings[key])) throw new Error('Invalid schedule');
     if (!Array.isArray(result.settings.movementTimes) || result.settings.movementTimes.length > 10 || result.settings.movementTimes.some(t => !/^([01]\d|2[0-3]):[0-5]\d$/.test(t))) throw new Error('Invalid reminder times');
@@ -73,11 +74,11 @@
       const saved = restored.days[key] || {};
       days[key] = { ...saved, ...day, routine: { ...saved.routine, ...day.routine }, activities: { ...saved.activities, ...day.activities }, recovery: { ...saved.recovery, ...day.recovery }, workout: day.workout?.updatedAt || Object.keys(day.workout?.exercises || {}).length ? day.workout : saved.workout || day.workout };
     }
-    return { ...restored, ...local, schemaVersion: 4, settings: { ...restored.settings, ...local.settings, equipment: localHadEquipment ? local.settings.equipment : restored.settings.equipment }, days, milestones: { ...restored.milestones, ...local.milestones }, generatedWeeks: { ...restored.generatedWeeks, ...local.generatedWeeks }, weeklyReviews: { ...restored.weeklyReviews, ...local.weeklyReviews } };
+    return { ...restored, ...local, schemaVersion: 4, settings: { ...restored.settings, ...local.settings, equipment: localHadEquipment ? local.settings.equipment : restored.settings.equipment }, days, milestones: { ...restored.milestones, ...local.milestones }, generatedWeeks: { ...restored.generatedWeeks, ...local.generatedWeeks }, weeklyReviews: { ...restored.weeklyReviews, ...local.weeklyReviews }, reviewDrafts: { ...restored.reviewDrafts, ...local.reviewDrafts } };
   }
   function mergeCloud(remote, local) {
     const localHadEquipment = isObject(local?.settings?.equipment); const a = normalize(remote); const b = normalize(local); const localHasRecords = Object.values(b.days).some(day => day.workout?.updatedAt || day.recovery?.updatedAt || day.sauna?.updatedAt || Object.keys(day.workout?.exercises || {}).length);
-    const result = { ...a, ...b, schemaVersion: 4, settings: localHasRecords ? { ...a.settings, ...b.settings } : { ...b.settings, ...a.settings }, days: {}, milestones: { ...a.milestones, ...b.milestones }, reminderState: { ...a.reminderState, ...b.reminderState }, generatedWeeks: { ...a.generatedWeeks, ...b.generatedWeeks }, weeklyReviews: { ...a.weeklyReviews, ...b.weeklyReviews } };
+    const result = { ...a, ...b, schemaVersion: 4, settings: localHasRecords ? { ...a.settings, ...b.settings } : { ...b.settings, ...a.settings }, days: {}, milestones: { ...a.milestones, ...b.milestones }, reminderState: { ...a.reminderState, ...b.reminderState }, generatedWeeks: { ...a.generatedWeeks, ...b.generatedWeeks }, weeklyReviews: { ...a.weeklyReviews, ...b.weeklyReviews }, reviewDrafts: { ...a.reviewDrafts, ...b.reviewDrafts } };
     if (localHasRecords && !localHadEquipment) result.settings.equipment = a.settings.equipment;
     for (const key of new Set([...Object.keys(a.days), ...Object.keys(b.days)])) {
       const x = a.days[key] || {}; const y = b.days[key] || {};
@@ -305,17 +306,107 @@
     return installGeneratedWeek(health, { sourceWeekStart, nextWeekStart, items, baseline: true, equipmentSignature: signature });
   }
   function sourceFingerprint(health, start) {
-    return JSON.stringify(Array.from({ length: 7 }, (_, i) => {
+    const value = JSON.stringify({ equipment: normalizeEquipment(health.settings.equipment), days: Array.from({ length: 7 }, (_, i) => {
       const key = addDays(start, i); const d = health.days[key] || {}; const w = d.workout || {};
+      const recovery = recoveryForWorkout(health, key); const plan = planFor(health, key);
       return {
-        key,
+        key, plan: { title: plan.title || '', kind: plan.kind || '', minutes: plan.minutes || 0, ids: plan.ids || [], exerciseOverrides: plan.exerciseOverrides || {} },
         workout: {
-          complete: Boolean(w.complete), painDuring: w.painDuring || '', painNext: w.painNext || '', effort: w.effort || '',
-          cardioMinutes: w.cardioMinutes || '', breathingSymptoms: w.breathingSymptoms || '', relieverUsed: w.relieverUsed || '', exercises: w.exercises || {}
+          complete: Boolean(w.complete), minutes: w.minutes || '', painDuring: w.painDuring || '', painAfter: w.painAfter || '', painNext: w.painNext || '', effort: w.effort || '',
+          cardioMinutes: w.cardioMinutes || '', breathingSymptoms: w.breathingSymptoms || '', relieverUsed: Boolean(w.relieverUsed),
+          exercises: Object.fromEntries(Object.entries(w.exercises || {}).map(([id, entry]) => [id, { done: Boolean(entry.done), sets: Array.isArray(entry.sets) ? entry.sets.map(String) : [], load: String(entry.load || ''), rir: String(entry.rir || ''), technique: String(entry.technique || '') }]))
         },
-        recovery: recoveryForWorkout(health, key)
+        recovery: recovery ? { workoutDate: recovery.workoutDate || '', pain: recovery.pain || '', status: recovery.status || '', plateSymptoms: Boolean(recovery.plateSymptoms), complete: Boolean(recovery.complete) } : null
       };
-    }));
+    }) });
+    let first = 2166136261; let second = 0x9e3779b9;
+    for (let i = 0; i < value.length; i++) { const code = value.charCodeAt(i); first = Math.imul(first ^ code, 16777619); second = Math.imul(second ^ (code + i), 2246822519); }
+    return `v1-${(first >>> 0).toString(16).padStart(8, '0')}-${(second >>> 0).toString(16).padStart(8, '0')}-${value.length}`;
+  }
+  function weeklyReviewSnapshot(health, sourceStart, today = dateKey()) {
+    const sourceWeekStart = weekStart(sourceStart); const nextWeekStart = addDays(sourceWeekStart, 7);
+    const completedSessions = sessionsInWeek(health, sourceWeekStart).length;
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const key = addDays(sourceWeekStart, index); const day = health.days[key] || {}; const workout = day.workout || {};
+      const sourcePlan = planFor(health, key); const exerciseOverrides = Object.fromEntries(Object.entries(sourcePlan.exerciseOverrides || {}).map(([id, targetValue]) => [id, {
+        prescription: String(targetValue.prescription || '').slice(0, 240), targetSets: Number(targetValue.targetSets) || 0,
+        targetReps: Array.isArray(targetValue.targetReps) ? targetValue.targetReps.map(Number).slice(0, 10) : Number(targetValue.targetReps) || 0,
+        implement: String(targetValue.implement || '').slice(0, 80), loadLabel: String(targetValue.loadLabel || '').slice(0, 100),
+        variation: String(targetValue.variation || '').slice(0, 80), ...(targetValue.loadKg !== undefined && targetValue.loadKg !== '' ? { loadKg: Number(targetValue.loadKg) } : {})
+      }]));
+      const plan = { title: String(sourcePlan.title || '').slice(0, 120), short: String(sourcePlan.short || '').slice(0, 80), kind: String(sourcePlan.kind || '').slice(0, 40), minutes: Number(sourcePlan.minutes) || 0, ids: Array.isArray(sourcePlan.ids) ? sourcePlan.ids.map(String).slice(0, 30) : [], exerciseOverrides };
+      const exercises = Object.fromEntries(Object.entries(workout.exercises || {}).map(([id, entry]) => [id, {
+        done: Boolean(entry.done), sets: Array.isArray(entry.sets) ? entry.sets.map(value => String(value)).slice(0, 10) : [],
+        load: String(entry.load || '').slice(0, 100), rir: entry.rir === undefined ? '' : String(entry.rir), technique: String(entry.technique || '')
+      }]));
+      return {
+        date: key, plan,
+        workout: {
+          complete: Boolean(workout.complete), minutes: String(workout.minutes || ''), effort: String(workout.effort || ''),
+          painDuring: String(workout.painDuring || ''), painAfter: String(workout.painAfter || ''), painNext: String(workout.painNext || ''),
+          cardioMinutes: String(workout.cardioMinutes || ''), breathingSymptoms: String(workout.breathingSymptoms || ''), relieverUsed: Boolean(workout.relieverUsed), exercises
+        },
+        nextMorningRecovery: clone(recoveryForWorkout(health, key))
+      };
+    });
+    return {
+      schemaVersion: 1, sourceWeekStart, nextWeekStart, sourceFingerprint: sourceFingerprint(health, sourceWeekStart),
+      ready: completedSessions >= 5 || today >= nextWeekStart, completedSessions,
+      equipment: normalizeEquipment(health.settings.equipment), days,
+      safetyPolicy: {
+        progress: 'Completed target, clean technique, 2–4 RIR, effort below 9, shoulder pain no higher than 2/10, stable next-morning recovery.',
+        hold: 'Missing recovery or exercise quality data, incomplete targets, okay technique, RIR below 2, effort 9+, or pain 3/10.',
+        regress: 'Poor technique, pain 4/10+ during, pain 3/10+ next morning, worse recovery, plate-site symptoms, or moderate/stopping asthma symptoms.',
+        constraints: 'Change one major variable at a time; cardio increase must not exceed 10%; prescribe only owned equipment.'
+      }
+    };
+  }
+  function normalizeReviewedItem(value) {
+    if (!isObject(value) || typeof value.id !== 'string' || ![...Object.keys(conservativePrescription), 'cardio', 'week'].includes(value.id)) throw new Error('Unsupported reviewed exercise');
+    if (!['PROGRESS', 'HOLD', 'REGRESS'].includes(value.state)) throw new Error('Invalid reviewed state');
+    const text = key => String(value[key] || '').trim().slice(0, key === 'reason' ? 500 : 240);
+    if (!text('to') || !text('reason')) throw new Error('Reviewed items need a prescription and reason');
+    const item = { id: value.id, name: text('name') || conservativePrescription[value.id]?.name || value.id, state: value.state, from: text('from'), to: text('to'), reason: text('reason') };
+    if (value.id === 'cardio') {
+      const minutes = Number(value.minutes); if (!Number.isInteger(minutes) || minutes < 5 || minutes > 180) throw new Error('Invalid reviewed cardio duration');
+      item.minutes = minutes;
+    } else if (value.id !== 'week') {
+      const targetValue = isObject(value.target) ? value.target : {};
+      const targetReps = Array.isArray(targetValue.targetReps) ? targetValue.targetReps.map(Number) : Number(targetValue.targetReps);
+      if (Array.isArray(targetReps) ? targetReps.some(n => !Number.isFinite(n) || n < 0 || n > 100) : !Number.isFinite(targetReps) || targetReps < 0 || targetReps > 100) throw new Error('Invalid reviewed reps');
+      const targetSets = Number(targetValue.targetSets);
+      if (!Number.isInteger(targetSets) || targetSets < 1 || targetSets > 10) throw new Error('Invalid reviewed sets');
+      item.target = {
+        prescription: item.to, targetSets, targetReps,
+        implement: String(targetValue.implement || '').slice(0, 80), loadLabel: String(targetValue.loadLabel || '').slice(0, 100),
+        variation: String(targetValue.variation || 'standard').slice(0, 80)
+      };
+      if (targetValue.loadKg !== undefined && targetValue.loadKg !== '') {
+        const loadKg = Number(targetValue.loadKg); if (!Number.isFinite(loadKg) || loadKg < 0 || loadKg > 200) throw new Error('Invalid reviewed load');
+        item.target.loadKg = loadKg;
+      }
+    }
+    return item;
+  }
+  function storeReviewedDraft(health, value) {
+    if (!isObject(value) || !validDate(value.sourceWeekStart) || !validDate(value.nextWeekStart) || value.nextWeekStart !== addDays(value.sourceWeekStart, 7)) throw new Error('Invalid reviewed week');
+    const snapshot = weeklyReviewSnapshot(health, value.sourceWeekStart);
+    if (!snapshot.ready || value.sourceFingerprint !== snapshot.sourceFingerprint) throw new Error('Workout data changed; request a fresh weekly review');
+    if (!Array.isArray(value.items) || !value.items.length || value.items.length > 30) throw new Error('Invalid reviewed plan');
+    const draft = {
+      sourceWeekStart: value.sourceWeekStart, nextWeekStart: value.nextWeekStart, sourceFingerprint: value.sourceFingerprint,
+      summary: String(value.summary || '').trim().slice(0, 1000), items: value.items.map(normalizeReviewedItem),
+      reviewedAt: String(value.reviewedAt || new Date().toISOString()), reviewedBy: 'codex', status: 'draft'
+    };
+    health.reviewDrafts ||= {}; health.reviewDrafts[draft.nextWeekStart] = draft; return draft;
+  }
+  function approveReviewedDraft(health, nextWeekStart) {
+    const draft = health.reviewDrafts?.[nextWeekStart]; if (!draft || draft.status !== 'draft') throw new Error('No review draft is ready');
+    const snapshot = weeklyReviewSnapshot(health, draft.sourceWeekStart);
+    if (snapshot.sourceFingerprint !== draft.sourceFingerprint) throw new Error('Workout data changed; refresh the review before approval');
+    const review = installGeneratedWeek(health, { ...draft, baseline: false, equipmentSignature: equipmentSignature(health), reviewedBy: 'codex' });
+    health.reviewDrafts[nextWeekStart] = { ...draft, status: 'approved', approvedAt: new Date().toISOString() };
+    return review;
   }
   function weekHasWorkoutActivity(health, start) {
     return Array.from({ length: 7 }, (_, i) => health.days[addDays(start, i)]?.workout)
@@ -407,6 +498,6 @@
     for (let i = 0; i < days; i++) { const key = addDays(from, i); for (const e of timeline(health, key)) { const start = new Date(`${key}T${e.time}:00`); const end = new Date(start.getTime() + Math.max(5, e.minutes) * 60000); const local = d => `${dateKey(d).replaceAll('-', '')}T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00`; lines.push('BEGIN:VEVENT', `UID:${key}-${e.id.replace(':', '')}@movestrong.local`, `DTSTAMP:${stamp}`, `DTSTART:${local(start)}`, `DTEND:${local(end)}`, `SUMMARY:${e.title}`, 'DESCRIPTION:Personal schedule. Adjust to your agreed health and training limits.'); if (['movement', 'sauna', 'checkin'].includes(e.kind)) lines.push('BEGIN:VALARM', 'TRIGGER:PT0S', 'ACTION:DISPLAY', `DESCRIPTION:${e.title}`, 'END:VALARM'); lines.push('END:VEVENT'); } }
     lines.push('END:VCALENDAR'); return lines.join('\r\n') + '\r\n';
   }
-  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, mergeHealth, mergeCloud, dayRecord, plans, planFor, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, isShoulderLoading, exerciseEquipment };
+  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, mergeHealth, mergeCloud, dayRecord, plans, planFor, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, weeklyReviewSnapshot, storeReviewedDraft, approveReviewedDraft, isShoulderLoading, exerciseEquipment };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.HealthModel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

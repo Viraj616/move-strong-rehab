@@ -1,0 +1,16 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "move-strong-review",
+  "version": "1.0.0",
+  "description": "Privately review one bounded week of Move Strong training and prepare the next week for explicit approval.",
+  "author": {
+    "name": "Move Strong"
+  },
+  "license": "Proprietary",
+  "keywords": [
+    "fitness",
+    "rehabilitation",
+    "weekly review",
+    "mcp"
+  ]
+}

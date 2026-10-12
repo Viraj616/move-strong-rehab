@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "move-strong": {
+      "type": "streamable-http",
+      "url": "https://move-strong-reminders.viraj616.workers.dev/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "api_key",
+            "headerScheme": "bearer"
+          }
+        }
+      }
+    }
+  }
+}
