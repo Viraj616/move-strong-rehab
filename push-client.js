@@ -1,7 +1,7 @@
 /* Device credentials deliberately stay outside the health backup/export. */
 const PushReminders = (() => {
   const KEY = 'moveStrongPushDeviceV1';
-  let error = ''; let syncing = false; let lastSnapshot = ''; let timer;
+  let error = ''; let syncing = false; let lastSnapshot = ''; let lastReviewSnapshot = ''; let timer;
   function connection() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } }
   function snapshot() {
     const health = state.healthOS || HealthModel.defaults();
@@ -23,20 +23,56 @@ const PushReminders = (() => {
   function bytes(value) { return Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)); }
   function randomToken() { return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''); }
   function panel() {
-    const c = connection();
-    return `<section class="card section"><p class="eyebrow">Android push notifications</p><h3>Reminders while the app is closed</h3><p>${c ? 'This device is connected to your reminder server.' : 'Connect this phone to your Cloudflare reminder server once, then allow notifications.'}</p><p class="help-text">Your reminder times, timezone and recent activity flags sync to your server. Workout details and recovery notes stay on this device. Internet access is needed; Android battery settings and Do Not Disturb can delay or silence alerts.</p>${c ? `<p class="help-text">${error ? escapeHtml(error) : `Last synced: ${c.syncedAt ? escapeHtml(new Date(c.syncedAt).toLocaleString()) : 'Waiting'}`}</p><div class="os-toolbar"><button id="push-test" class="primary-btn">Send test notification</button><button id="push-sync" class="secondary-btn">Sync now</button><button id="push-disable" class="text-btn">Disconnect this phone</button></div>` : `<form id="push-connect"><div class="field"><label for="push-url">Reminder server address</label><input id="push-url" name="url" type="url" value="https://move-strong-reminders.viraj616.workers.dev" required></div><div class="field"><label for="push-code">Pairing code</label><input id="push-code" name="code" type="password" autocomplete="off" required></div><button class="primary-btn">Connect this phone</button></form>`}<p class="help-text">Schedule changes and completed walks sync when the app is online. Reopen the app after travelling to update your timezone. Push notifications open the app; snooze and skip remain available for open-app reminders.</p></section>`;
+    const c = connection(); const reviewing = Boolean(state.healthOS?.settings?.aiWeeklyReview);
+    const reviewControl = `<label class="os-check"><input id="ai-weekly-review" type="checkbox" ${reviewing ? 'checked' : ''}> Send a bounded weekly training snapshot for private Codex review</label><p class="help-text">Only the prior/current week’s structured plan, performance, symptoms, next-morning recovery and equipment are included. Free-text notes, full history and sign-in details are never sent. Turning this off removes the shared snapshots and drafts on the next online sync.</p>`;
+    const connectionUi = c ? `<p class="help-text">${error ? escapeHtml(error) : `Last synced: ${c.syncedAt ? escapeHtml(new Date(c.syncedAt).toLocaleString()) : 'Waiting'}`}</p><div class="os-toolbar"><button id="push-test" class="primary-btn">Send test notification</button><button id="push-sync" class="secondary-btn">Sync now</button><button id="push-disable" class="text-btn">Disconnect this phone</button></div>` : `<form id="push-connect"><div class="field"><label for="push-url">Private service address</label><input id="push-url" name="url" type="url" value="https://move-strong-reminders.viraj616.workers.dev" required></div><div class="field"><label for="push-code">Pairing code</label><input id="push-code" name="code" type="password" autocomplete="off" required></div><button class="primary-btn">Connect this phone</button></form>`;
+    return `<section class="card section"><p class="eyebrow">Private app connection</p><h3>Reminders + weekly Codex review</h3><p>${c ? 'This device is connected to your private Move Strong service.' : 'Connect this phone to your Cloudflare service once, then allow notifications.'}</p>${reviewControl}${connectionUi}<p class="help-text">A Codex review can only save a draft. You must approve it in this app before next week changes.</p></section>`;
+  }
+  async function syncWeeklyReview(c, health, force) {
+    if (!health.settings.aiWeeklyReview) { lastReviewSnapshot = ''; return false; }
+    const currentStart = HealthModel.weekStart(HealthModel.dateKey());
+    const snapshots = [HealthModel.addDays(currentStart, -7), currentStart].map(start => HealthModel.weeklyReviewSnapshot(health, start));
+    const serialized = JSON.stringify(snapshots);
+    if (force || serialized !== lastReviewSnapshot) {
+      await api(c.url, '/review/sync', c.token, { id: c.id, snapshots });
+      lastReviewSnapshot = serialized;
+    }
+    let changed = false;
+    for (const nextWeekStart of [currentStart, HealthModel.addDays(currentStart, 7)]) {
+      const result = await api(c.url, '/review/draft', c.token, { id: c.id, nextWeekStart });
+      const local = health.reviewDrafts?.[nextWeekStart];
+      if (result.draft && local?.status !== 'approved' && JSON.stringify(local) !== JSON.stringify(result.draft)) {
+        HealthModel.storeReviewedDraft(health, result.draft); changed = true;
+      }
+    }
+    return changed;
   }
   async function sync(force = false) {
     const c = connection(); if (!c || syncing || !navigator.onLine) return;
     const data = snapshot(); const serialized = JSON.stringify(data);
-    if (!force && serialized === lastSnapshot) return;
+    if (!force && serialized === lastSnapshot && !state.healthOS?.settings?.aiWeeklyReview && !c.reviewSharing) return;
     syncing = true;
-    try { await api(c.url, '/sync', c.token, { id: c.id, ...data }); lastSnapshot = serialized; error = ''; localStorage.setItem(KEY, JSON.stringify({ ...c, syncedAt: Date.now() })); }
-    catch (e) { error = `Schedule has not synced: ${e.message}`; }
+    try {
+      if (force || serialized !== lastSnapshot) { await api(c.url, '/sync', c.token, { id: c.id, ...data }); lastSnapshot = serialized; }
+      const currentHealth = state.healthOS || HealthModel.defaults();
+      if (!currentHealth.settings.aiWeeklyReview && c.reviewSharing) await api(c.url, '/review/disable', c.token, { id: c.id }, 'DELETE');
+      const changed = await syncWeeklyReview(c, currentHealth, force);
+      error = ''; localStorage.setItem(KEY, JSON.stringify({ ...c, reviewSharing: Boolean(currentHealth.settings.aiWeeklyReview), syncedAt: Date.now() }));
+      if (changed) { saveState(); if (typeof render === 'function') render(); }
+    }
+    catch (e) { error = `Connection has not synced: ${e.message}`; }
     finally { syncing = false; }
   }
   function scheduleSync() { clearTimeout(timer); timer = setTimeout(() => sync(), 1000); }
+  async function approveReview(nextWeekStart) {
+    const c = connection(); if (!c) throw Error('Connect this device before approving a Codex review');
+    await api(c.url, '/review/approve', c.token, { id: c.id, nextWeekStart });
+  }
   function bind() {
+    document.getElementById('ai-weekly-review')?.addEventListener('change', e => {
+      state.healthOS ||= HealthModel.defaults(); state.healthOS.settings.aiWeeklyReview = e.target.checked; saveState();
+      showToast(e.target.checked ? (connection() ? 'Weekly Codex review enabled' : 'Weekly review enabled. Connect this device to start sharing.') : 'Weekly Codex review disabled'); render();
+    });
     document.getElementById('push-connect')?.addEventListener('submit', async e => {
       e.preventDefault(); const button = e.target.querySelector('button'); button.disabled = true;
       let subscription; let newlySubscribed = false;
@@ -64,12 +100,12 @@ const PushReminders = (() => {
       try {
         await api(c.url, '/disable', c.token, { id: c.id }, 'DELETE');
         const registration = await navigator.serviceWorker.getRegistration(); const subscription = await registration?.pushManager.getSubscription(); await subscription?.unsubscribe();
-        localStorage.removeItem(KEY); lastSnapshot = ''; showToast('Phone disconnected'); render();
+        localStorage.removeItem(KEY); lastSnapshot = ''; lastReviewSnapshot = ''; showToast('Phone disconnected'); render();
       } catch (e) { showToast(`Could not disconnect: ${e.message}`); }
     });
   }
   window.addEventListener('online', scheduleSync);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleSync(); });
   setInterval(() => sync(), 60000);
-  return { panel, bind, scheduleSync, connected: () => Boolean(connection()) };
+  return { panel, bind, scheduleSync, approveReview, connected: () => Boolean(connection()) };
 })();

@@ -76,3 +76,43 @@ test('registered device syncs, cron deduplicates, expired subscriptions disable,
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM deliveries').get().n, 0);
   } finally { globalThis.fetch = originalFetch; db.close(); }
 });
+
+test('weekly snapshots are private, MCP saves drafts, and the app must approve them', async () => {
+  const db = new DatabaseSync(':memory:'); db.exec(fs.readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+  const DB = { prepare(sql) {
+    let values = [];
+    const query = { bind(...args) { values = args; return query; }, async first() { return db.prepare(sql).get(...values); }, async all() { return { results: db.prepare(sql).all(...values) }; }, async run() { return { meta: { changes: Number(db.prepare(sql).run(...values).changes) } }; } };
+    return query;
+  }, async batch(queries) { return Promise.all(queries.map(q => q.run())); } };
+  const keys = webpush.generateVAPIDKeys(); const recipient = webpush.generateVAPIDKeys();
+  const env = { DB, APP_ORIGIN: 'https://viraj616.github.io', APP_URL: 'https://viraj616.github.io/move-strong-rehab/', PAIRING_TOKEN: 'test-pairing', MCP_ACCESS_TOKEN: 'test-mcp-secret', VAPID_PUBLIC_KEY: keys.publicKey, VAPID_PRIVATE_KEY: keys.privateKey };
+  const id = crypto.randomUUID(); const deviceToken = 'b'.repeat(43);
+  const appCall = (path, token, body, method = 'POST') => worker.fetch(new Request('https://example.com' + path, { method, headers: { Origin: env.APP_ORIGIN, Authorization: `Bearer ${token}` }, body: JSON.stringify(body) }), env);
+  const subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/test', keys: { p256dh: recipient.publicKey, auth: Buffer.alloc(16,7).toString('base64url') } };
+  assert.equal((await appCall('/subscribe', env.PAIRING_TOKEN, { id, deviceToken, subscription, settings })).status, 200);
+
+  const sourceWeekStart = '2026-10-05'; const nextWeekStart = '2026-10-12'; const sourceFingerprint = 'v1-1234abcd-5678efab-1024';
+  const days = Array.from({ length: 7 }, (_, index) => { const date = new Date('2026-10-05T12:00:00Z'); date.setUTCDate(date.getUTCDate() + index); return { date: date.toISOString().slice(0, 10), plan: { title: 'Training', short: 'Train', kind: 'strength', minutes: 45, ids: ['d3e-row'], notes: 'drop me' }, workout: { complete: index < 5, effort: '6', painDuring: '1', exercises: index === 0 ? { 'd3e-row': { done: true, sets: ['12','12','12'], load: '5 kg dumbbell', rir: '3', technique: 'clean', notes: 'drop me' } } : {} }, nextMorningRecovery: index === 0 ? { workoutDate: '2026-10-05', pain: '1', status: 'same', complete: true, notes: 'drop me' } : null }; });
+  const snapshot = { schemaVersion: 1, sourceWeekStart, nextWeekStart, sourceFingerprint, ready: true, completedSessions: 5, equipment: { dumbbellsKg: [5,5], kettlebellsKg: [10], bands: ['red'], pullUpBar: true, rowingMachine: true }, days, safetyPolicy: {} };
+  assert.equal((await appCall('/review/sync', deviceToken, { id, snapshots: [snapshot] })).status, 200);
+  assert.doesNotMatch(db.prepare('SELECT snapshot FROM weekly_snapshots').get().snapshot, /drop me|notes/);
+
+  const mcpCall = body => worker.fetch(new Request('https://example.com/mcp', { method: 'POST', headers: { Authorization: `Bearer ${env.MCP_ACCESS_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), env);
+  assert.equal((await worker.fetch(new Request('https://example.com/mcp', { method: 'POST', headers: { Authorization: 'Bearer wrong' }, body: '{}' }), env)).status, 401);
+  const initialized = await (await mcpCall({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })).json();
+  assert.equal(initialized.result.serverInfo.name, 'move-strong-weekly-review');
+  const week = await (await mcpCall({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_week_for_review', arguments: { sourceWeekStart } } })).json();
+  assert.equal(week.result.structuredContent.snapshot.completedSessions, 5);
+
+  const draft = { sourceWeekStart, nextWeekStart, sourceFingerprint, summary: 'Small, symptom-gated progression.', items: [{ id: 'd3e-row', name: 'Row', state: 'PROGRESS', from: '3 × 12 at 5 kg', to: '3 × 12 at 5 kg with a pause', reason: 'Clean work and stable next-day symptoms; change tempo only.', target: { targetSets: 3, targetReps: 12, implement: 'dumbbell', loadKg: 5, loadLabel: '5 kg dumbbell', variation: 'paused' } }] };
+  const saved = await (await mcpCall({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'save_next_week_draft', arguments: draft } })).json();
+  assert.equal(saved.result.structuredContent.status, 'draft');
+  const pulled = await (await appCall('/review/draft', deviceToken, { id, nextWeekStart })).json();
+  assert.equal(pulled.draft.status, 'draft');
+  assert.equal((await appCall('/review/approve', deviceToken, { id, nextWeekStart })).status, 200);
+  assert.equal(db.prepare('SELECT status FROM review_drafts WHERE next_week_start=?').get(nextWeekStart).status, 'approved');
+  assert.equal((await appCall('/review/disable', deviceToken, { id }, 'DELETE')).status, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM weekly_snapshots').get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM review_drafts').get().n, 0);
+  db.close();
+});

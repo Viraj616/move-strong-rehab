@@ -1,0 +1,33 @@
+{
+  "name": "move-strong-review",
+  "version": "1.0.0",
+  "description": "Privately review one bounded week of Move Strong training and prepare the next week for explicit approval.",
+  "author": {
+    "name": "Move Strong"
+  },
+  "license": "Proprietary",
+  "keywords": [
+    "fitness",
+    "rehabilitation",
+    "weekly review",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Move Strong Weekly Review",
+    "shortDescription": "Review training and draft next week",
+    "longDescription": "Reads only the bounded weekly training snapshot the user opted to share, then saves a conservative next-week draft that must be approved inside Move Strong.",
+    "developerName": "Move Strong",
+    "category": "Health & Fitness",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Review my latest completed Move Strong week and draft next week",
+      "Check whether my latest week is ready for review"
+    ],
+    "brandColor": "#163D37"
+  }
+}

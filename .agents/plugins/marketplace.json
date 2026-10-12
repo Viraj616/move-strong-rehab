@@ -1,0 +1,20 @@
+{
+  "name": "move-strong-local",
+  "interface": {
+    "displayName": "Move Strong"
+  },
+  "plugins": [
+    {
+      "name": "move-strong-review",
+      "source": {
+        "source": "local",
+        "path": "./plugins/move-strong-review"
+      },
+      "policy": {
+        "installation": "INSTALLED_BY_DEFAULT",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Health & Fitness"
+    }
+  ]
+}
