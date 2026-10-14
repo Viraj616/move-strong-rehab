@@ -118,6 +118,9 @@ progress::-moz-progress-bar { background:#568155; }
 .os-adaptation-card > p { max-width:66ch; color:#d2ded5; line-height:1.55; }
 .os-adaptation-meta { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 4px; }
 .os-adaptation-meta span { padding:7px 10px; border:1px solid #ffffff24; border-radius:999px; color:#d5e2d7; font-size:.68rem; }
+.os-duration-alert { display:grid; gap:4px; margin:18px 0 2px; padding:13px 15px; border:1px solid #f1cb7a80; border-radius:14px; background:#4b3a25; color:#fff5dc; }
+.os-duration-alert strong { font-size:.78rem; }
+.os-duration-alert span { color:#f2dfb8; font-size:.75rem; line-height:1.45; }
 .os-status-pill { display:inline-flex; align-items:center; border-radius:999px; padding:7px 10px; background:#eef0e9; color:#59645a; font-size:.62rem; font-weight:850; letter-spacing:.09em; white-space:nowrap; }
 .os-status-pill.is-ready { background:var(--accent); color:#2c4b34; }
 .os-context-card { margin-top:0; }
