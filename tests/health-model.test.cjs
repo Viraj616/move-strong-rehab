@@ -157,19 +157,96 @@ test('cardio progression is symptom-aware and capped at ten percent', () => {
   assert.equal(M.planFor(data, '2026-10-15').minutes, 33);
 });
 
-test('weekly review snapshot is bounded, equipment-aware and excludes free-text notes', () => {
+test('weekly review snapshot includes all-history trends, recent detail and excludes free-text notes', () => {
   const data = M.defaults(); data.settings.aiWeeklyReview = true;
   addQualifiedWeek(data, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
+  M.dayRecord(data, '2026-09-29').workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', exercises: { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5 kg dumbbell', rir: '3', technique: 'clean' } }, notes: 'older private note' };
   data.days['2026-10-05'].recovery.notes = 'private journal text';
-  const snapshot = M.weeklyReviewSnapshot(data, '2026-10-05', '2026-10-09');
+  const snapshot = M.weeklyReviewSnapshot(data, '2026-10-05', '2026-10-09', { pullups: '3', hollow: '20', notes: 'private goal note', checklist: { pull3: true } });
   assert.equal(snapshot.ready, true);
   assert.deepEqual(snapshot.equipment.dumbbellsKg, [5, 5]);
   assert.equal(snapshot.days.length, 7);
+  assert.equal(snapshot.previousWeek.days.length, 7);
+  assert.equal(snapshot.previousWeek.days[1].workout.exercises['d3e-row'].sets[0], '10');
+  assert.equal(snapshot.schemaVersion, 2);
+  assert.equal(snapshot.history.completedSessions, 6);
+  assert.equal(snapshot.history.exerciseTrends['d3e-row'].exposures, 2);
+  assert.equal(snapshot.history.exerciseTrends['d3e-row'].bestSetReps, 12);
+  assert.ok(snapshot.history.weeks.length >= 2);
+  assert.equal(snapshot.goals.pullups, 3);
+  assert.equal(snapshot.goals.checklist.pull3, true);
   assert.match(JSON.stringify(snapshot), /d3e-row/);
-  assert.doesNotMatch(JSON.stringify(snapshot), /private journal text|notes/);
+  assert.doesNotMatch(JSON.stringify(snapshot), /private journal text|older private note|private goal note|notes/);
 });
 
-test('Codex review remains a draft until explicit approval and rejects stale workout data', () => {
+test('editing an older training record invalidates the complete-history review fingerprint', () => {
+  const data = M.defaults();
+  M.dayRecord(data, '2026-09-22').workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', exercises: { 'd2e-bss': { done: true, sets: ['8', '8', '8'], load: 'bodyweight', rir: '3', technique: 'clean' } }, updatedAt: '2026-09-22T08:00:00Z' };
+  addQualifiedWeek(data, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
+  const before = M.weeklyReviewSnapshot(data, '2026-10-05', '2026-10-12').sourceFingerprint;
+  data.days['2026-09-22'].workout.exercises['d2e-bss'].sets[0] = '9';
+  const after = M.weeklyReviewSnapshot(data, '2026-10-05', '2026-10-12').sourceFingerprint;
+  assert.notEqual(after, before);
+});
+
+test('daily review includes notes as observations and any note edit invalidates tomorrow', () => {
+  const data = M.defaults();
+  M.dayRecord(data, '2026-10-13').workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', notes: 'Yellow band assistance felt smooth.', exercises: { 'd3e-pullup-single': { done: true, sets: ['3', '3', '2'], load: 'yellow band', rir: '3', technique: 'clean' } }, updatedAt: '2026-10-13T08:00:00Z' };
+  M.dayRecord(data, '2026-10-14').recovery = { shoulder: '1', notes: 'No plate tenderness this morning.', previousWorkout: { workoutDate: '2026-10-13', pain: '1', status: 'same', complete: true, notes: 'Slept well.' } };
+  const goals = { pullups: '5', notes: 'Work toward a controlled muscle-up.', checklist: { pull3: true } };
+  const legacyLogs = { 'w1-d1-home': { complete: true, notes: 'Original programme row felt easy.', exercises: { 'd3e-row': { done: true, sets: ['8', '8', '8'], load: '5 kg' } } } };
+  const snapshot = M.dailyReviewSnapshot(data, '2026-10-14', '2026-10-14', goals, legacyLogs);
+  assert.equal(snapshot.cadence, 'daily');
+  assert.equal(snapshot.targetDate, '2026-10-15');
+  assert.match(JSON.stringify(snapshot.notes), /Yellow band assistance felt smooth|No plate tenderness|controlled muscle-up/);
+  assert.match(JSON.stringify(snapshot.legacyHistory), /Original programme row felt easy/);
+  const before = snapshot.sourceFingerprint;
+  data.days['2026-10-13'].workout.notes = 'Yellow band assistance felt difficult.';
+  assert.notEqual(M.dailyReviewSnapshot(data, '2026-10-14', '2026-10-14', goals, legacyLogs).sourceFingerprint, before);
+});
+
+test('daily reviewed plan changes only tomorrow and never rewrites a started target day', () => {
+  const data = M.defaults(); const goals = { pullups: '5', checklist: {} };
+  M.dayRecord(data, '2026-10-14').workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', exercises: {}, updatedAt: '2026-10-14T08:00:00Z' };
+  const snapshot = M.dailyReviewSnapshot(data, '2026-10-14', '2026-10-14', goals);
+  const value = { cadence: 'daily', sourceDate: snapshot.sourceDate, targetDate: snapshot.targetDate, sourceFingerprint: snapshot.sourceFingerprint, summary: 'Small next-day adjustment.', items: [{ id: 'cardio', name: 'Easy cardio', state: 'HOLD', from: '30 min planned', to: 'Repeat 30 min conversational run / walk', reason: 'Preserve aerobic dose while recovery evidence accumulates.', minutes: 30 }] };
+  M.storeDailyReviewedPlan(data, value, goals); M.activateDailyReviewedPlan(data, '2026-10-15', goals);
+  assert.equal(M.planFor(data, '2026-10-15').minutes, 30);
+  assert.equal(data.dailyReviews['2026-10-14'].targetDate, '2026-10-15');
+  assert.equal(data.days['2026-10-14'].plan, undefined);
+  assert.equal(M.dailyReviewSnapshot(data, '2026-10-14', '2026-10-14', goals).sourceFingerprint, snapshot.sourceFingerprint);
+
+  const blocked = M.defaults(); const blockedSnapshot = M.dailyReviewSnapshot(blocked, '2026-10-14', '2026-10-14', goals);
+  const blockedValue = { ...value, sourceFingerprint: blockedSnapshot.sourceFingerprint };
+  M.storeDailyReviewedPlan(blocked, blockedValue, goals); M.dayRecord(blocked, '2026-10-15').workout.updatedAt = '2026-10-15T07:00:00Z';
+  assert.equal(M.activateDailyReviewedPlan(blocked, '2026-10-15', goals), null);
+  assert.equal(blocked.reviewDrafts['2026-10-15'].status, 'skipped');
+});
+
+test('goal-aware generation rotates a related exercise after two clean weeks instead of only adding reps', () => {
+  const data = M.defaults();
+  M.dayRecord(data, '2026-09-29').workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', exercises: { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5 kg dumbbell', rir: '3', technique: 'clean' } }, updatedAt: '2026-09-29T08:00:00Z' };
+  addQualifiedWeek(data, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
+  const review = M.generateNextWeek(data, '2026-10-05', { pullups: '3', checklist: { pull3: true } });
+  const rotation = review.items.find(item => item.id === 'd5s-rowline');
+  assert.ok(rotation);
+  assert.match(rotation.reason, /Friday row angle/i);
+  const friday = M.planFor(data, '2026-10-16');
+  assert.ok(friday.ids.includes('d5s-rowline'));
+  assert.ok(!friday.ids.includes('d3e-row'));
+  assert.match(friday.exerciseOverrides['d5s-rowline'].prescription, /chest-to-bar line rows/i);
+});
+
+test('a prior-week symptom concern prevents progression until two clean current exposures exist', () => {
+  const data = M.defaults();
+  M.dayRecord(data, '2026-09-29').workout = { complete: true, painDuring: '4', painNext: '3', effort: '8', exercises: { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5 kg dumbbell', rir: '2', technique: 'clean' } }, updatedAt: '2026-09-29T08:00:00Z' };
+  addQualifiedWeek(data, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
+  const decision = M.decideExercise(data, '2026-10-05', 'd3e-row');
+  assert.equal(decision.state, 'HOLD');
+  assert.match(decision.reason, /previous week/i);
+});
+
+test('Codex reviewed plan can be activated automatically and rejects stale workout data', () => {
   const data = M.defaults();
   addQualifiedWeek(data, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
   const snapshot = M.weeklyReviewSnapshot(data, '2026-10-05', '2026-10-09');
@@ -239,7 +316,7 @@ test('stale v1 generated weeks refresh before the following week is started', ()
   M.ensureGeneratedWeeks(data, '2026-10-12');
   const after = M.planFor(data, '2026-10-12');
   assert.ok(after.exerciseOverrides['d3e-row']);
-  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 3);
+  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 6);
 });
 
 test('started days are preserved while later days of a refreshed week can update', () => {
