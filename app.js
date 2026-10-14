@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '3.6.0';
+const APP_VERSION = '3.7.0';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
