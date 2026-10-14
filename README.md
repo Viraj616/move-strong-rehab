@@ -17,9 +17,10 @@ A local-first six-week Progressive Web App (PWA) containing the six-day Strength
 - Pain-during, pain-after and required-for-progression next-morning shoulder response tracking
 - Cardio breathing/asthma symptom and reliever-use tracking
 - Deterministic PROGRESS / HOLD / REGRESS weekly reviews with a reason for every change
-- Optional private Codex weekly review using a bounded snapshot and explicit in-app approval before the next week changes
+- Optional private Codex daily review using all-history trends, the latest 14 detailed days, goals and user-entered notes, with automatic fingerprint-validated activation of tomorrow
 - Equipment-aware prescriptions that use an owned load or a specific reps, tempo, pause, 1.5-rep, assistance, or leverage progression—never a generic “next available load”
-- Automatic deterministic next-week generation, or approval-gated Codex generation when private weekly review is enabled
+- Goal-aware exercise rotation that replaces related work with earned hollow-hold, knee-raise, pulling-line or assisted-support progressions instead of only adding reps
+- Automatic deterministic weekly generation, or a rolling Codex-reviewed next-day adjustment when private daily review is enabled
 - Optional Firebase Authentication + Firestore cloud sync, while retaining offline local saves
 - Six-week completion view
 - JSON backup and restore
@@ -174,6 +175,6 @@ The app stores the Firebase refresh token, project ID and email in a separate lo
 - This is an independent plan inspired by publicly shown movement-training principles. It is not affiliated with Strength Side and does not reproduce a paid programme.
 - The app does not diagnose injury or replace surgeon/physiotherapist clearance.
 - Stop progression for sharp fracture-site or plate pain, new swelling, deformity, neurological symptoms, sudden weakness, or worsening symptoms after a fall.
-# Move Strong Health OS · version 3.3
+# Move Strong Health OS · version 3.6
 
 The calendar-first refresh is documented in [HEALTH_OS.md](HEALTH_OS.md), including data preservation, local preview, tests and notification limitations. The original programme documentation below is retained for reference; its six-week records remain accessible through Train → Original programme.
