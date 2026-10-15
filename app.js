@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '3.7.1';
+const APP_VERSION = '3.8.0';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -546,15 +546,13 @@ function routeTo(nextRoute) {
 }
 
 function render() {
+  if (['archive', 'old-progress', 'goals'].includes(route)) route = 'home';
   window.AppNavigation?.record();
   backBtn.classList.toggle('hidden', route !== 'workout');
   bottomNav.classList.toggle('hidden', route === 'workout');
   document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.route === route));
 
   if (HealthUI.renderRoute()) return;
-  if (route === 'archive') renderPlan();
-  if (route === 'old-progress') renderProgress();
-
   if (route === 'home') renderHome();
   if (route === 'plan') renderPlan();
   if (route === 'progress') renderProgress();
