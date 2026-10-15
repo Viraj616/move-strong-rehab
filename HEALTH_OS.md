@@ -1,4 +1,4 @@
-# Move Strong 3.7
+# Move Strong 3.8
 
 The app opens on a dated Today timeline, with a morning routine, scheduled training, movement breaks, optional sauna and bedtime. Week shows only committed current or generated plans; speculative month views are deliberately omitted. Log offers the dated programme, text-only technique guidance, set logging and previous results without exercise-mimicking imagery. Recovery logs sleep, shoulder symptoms, energy, breathing and sauna/skin response. Review explains daily adaptations and records long-term milestones. You contains schedule, sync and backup preferences.
 
