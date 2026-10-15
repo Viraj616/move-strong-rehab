@@ -250,7 +250,7 @@ test('skill pathways derive stages from two clean target sessions and ignore man
   }
   pull = M.skillPathways(data, '2026-10-10').find(pathway => pathway.id === 'pull');
   assert.equal(pull.current, 'Assisted pull-up');
-  assert.equal(pull.evidence, '0/2 clean target sessions');
+  assert.equal(pull.evidence, '0/2 clean target sessions in the current streak');
 });
 
 test('shoulder pathways require stable next-morning recovery and reset after a concern', () => {
@@ -265,6 +265,21 @@ test('shoulder pathways require stable next-morning recovery and reset after a c
   const pull = M.skillPathways(data, '2026-10-10').find(pathway => pathway.id === 'pull');
   assert.equal(pull.current, 'Supported row');
   assert.equal(pull.status, 'HOLD');
+  assert.match(pull.evidence, /Held by the latest relevant record/);
+});
+
+test('skill pathway evidence counts the clean streak after the latest concern', () => {
+  const data = M.defaults();
+  const row = (key, painNext, rir = '3') => {
+    M.dayRecord(data, key).workout = { complete: true, painDuring: '1', painNext, effort: '6', exercises: { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5 kg dumbbell', rir, technique: 'clean' } }, updatedAt: `${key}T08:00:00Z` };
+  };
+  row('2026-10-01', '1'); row('2026-10-03', '1'); row('2026-10-05', '3'); row('2026-10-07', '1');
+  let pull = M.skillPathways(data, '2026-10-07').find(pathway => pathway.id === 'pull');
+  assert.equal(pull.current, 'Supported row');
+  assert.equal(pull.evidence, '1/2 clean target sessions in the current streak');
+  row('2026-10-09', '1');
+  pull = M.skillPathways(data, '2026-10-09').find(pathway => pathway.id === 'pull');
+  assert.equal(pull.current, 'Assisted pull-up');
 });
 
 test('core target automatically replaces one future dead-bug slot with hollow holds', () => {
