@@ -346,11 +346,13 @@
   const stageBlocked = (exposure, shoulder) => stageConcern(exposure) || !exposure.entry.done || exposure.entry.technique !== 'clean' || !Number.isFinite(Number(exposure.entry.rir)) || (shoulder && !exposure.recovery?.complete);
   function pathwayGate(health, through, gate) {
     const evidence = allExerciseEvidence(health, through, gate.ids);
-    const passing = evidence.filter(exposure => exposureIsQualified(exposure, gate.shoulder)).filter(exposure => gate.test(exposure.entry, exposure, normalizeEquipment(health.settings.equipment)));
+    let lastConcernIndex = -1;
+    evidence.forEach((exposure, index) => { if (stageConcern(exposure)) lastConcernIndex = index; });
+    const currentEvidence = evidence.slice(lastConcernIndex + 1);
+    const passing = currentEvidence.filter(exposure => exposureIsQualified(exposure, gate.shoulder)).filter(exposure => gate.test(exposure.entry, exposure, normalizeEquipment(health.settings.equipment)));
     const passingDates = [...new Map(passing.map(exposure => [exposure.key, exposure])).values()];
-    const required = gate.required || 2; const latestPassing = passingDates.slice(-required);
-    const concernAfterEvidence = latestPassing.length ? evidence.some(exposure => exposure.key >= latestPassing[0].key && stageConcern(exposure)) : evidence.slice(-2).some(stageConcern);
-    const achieved = latestPassing.length >= required && !concernAfterEvidence;
+    const required = gate.required || 2;
+    const achieved = passingDates.length >= required;
     const latest = evidence.at(-1) || null;
     return { achieved, passingSessions: passingDates.length, required, concerns: evidence.filter(stageConcern).length, latest, blocked: Boolean(latest && stageBlocked(latest, gate.shoulder)) };
   }
@@ -404,12 +406,13 @@
       gates.forEach((result, index) => { if (result.achieved) level = Math.max(level, index + 1); });
       level = Math.min(level, config.stages.length - 1);
       const gate = config.gates[level]; const result = gates[level]; const blocked = result?.blocked;
+      const progress = `${Math.min(result?.passingSessions || 0, result?.required || 2)}/${result?.required || 2} clean target sessions in the current streak`;
       return {
         id: config.id, title: config.title, stages: config.stages, level, current: config.stages[level], next: config.stages[level + 1] || null,
         target: gate?.target || 'Keep building clean, symptom-stable practice before the next advanced stage is prescribed.',
         passingSessions: result?.passingSessions || 0, requiredSessions: result?.required || 2,
         status: blocked ? 'HOLD' : result?.passingSessions ? 'BUILDING' : 'START',
-        evidence: blocked ? 'The latest relevant record needs a hold or regression.' : `${Math.min(result?.passingSessions || 0, result?.required || 2)}/${result?.required || 2} clean target sessions`,
+        evidence: blocked ? `Held by the latest relevant record; ${progress}` : progress,
         planExerciseId: config.planByLevel[level] || null
       };
     });
