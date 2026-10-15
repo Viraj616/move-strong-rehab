@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "move-strong-review",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Privately review all prior Move Strong training, recent days and notes to adapt tomorrow automatically.",
   "author": {
     "name": "Move Strong"

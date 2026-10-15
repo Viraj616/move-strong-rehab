@@ -108,6 +108,12 @@ function validateSnapshot(value) {
     cardio: { sessions: boundedCount(rawHistory.cardio?.sessions), totalMinutes: boundedCount(rawHistory.cardio?.totalMinutes, 1000000), longestMinutes: boundedCount(rawHistory.cardio?.longestMinutes, 10000), breathingConcerns: boundedCount(rawHistory.cardio?.breathingConcerns), relieverUses: boundedCount(rawHistory.cardio?.relieverUses) },
     safety: { painConcernSessions: boundedCount(rawHistory.safety?.painConcernSessions), worseRecoveryChecks: boundedCount(rawHistory.safety?.worseRecoveryChecks), plateSymptomChecks: boundedCount(rawHistory.safety?.plateSymptomChecks), completedRecoveryChecks: boundedCount(rawHistory.safety?.completedRecoveryChecks) }
   };
+  const skillPathways = Array.isArray(value.skillPathways) ? value.skillPathways.slice(0, 10).map(pathway => {
+    const stages = Array.isArray(pathway?.stages) ? pathway.stages.map(stage => cleanText(stage, 80)).filter(Boolean).slice(0, 12) : [];
+    const level = Math.min(Math.max(0, boundedCount(pathway?.level, Math.max(0, stages.length - 1))), Math.max(0, stages.length - 1));
+    const planExerciseId = REVIEW_IDS.has(pathway?.planExerciseId) ? pathway.planExerciseId : null;
+    return { id: cleanText(pathway?.id, 40), title: cleanText(pathway?.title, 80), stages, level, current: cleanText(pathway?.current, 80), next: pathway?.next ? cleanText(pathway.next, 80) : null, target: cleanText(pathway?.target, 240), passingSessions: boundedCount(pathway?.passingSessions, 1000), requiredSessions: boundedCount(pathway?.requiredSessions, 20), status: ['START', 'BUILDING', 'HOLD'].includes(pathway?.status) ? pathway.status : 'HOLD', evidence: cleanText(pathway?.evidence, 240), planExerciseId };
+  }).filter(pathway => /^[a-z0-9-]{1,40}$/.test(pathway.id) && pathway.title && pathway.stages.length && pathway.current) : [];
   const cleanEquipment = { dumbbellsKg: numberList(equipment.dumbbellsKg), kettlebellsKg: numberList(equipment.kettlebellsKg), bands: Array.isArray(equipment.bands) ? equipment.bands.map(v => cleanText(v, 40)).filter(Boolean).slice(0, 10) : [], pullUpBar: Boolean(equipment.pullUpBar), rowingMachine: Boolean(equipment.rowingMachine) };
   if (daily) {
     const rawNotes = value.notes || {}; const entries = Array.isArray(rawNotes.entries) ? rawNotes.entries.slice(0, 1000).map(entry => ({ date: DATE.test(entry?.date || '') ? entry.date : '', workout: cleanText(entry?.workout, 1000), recovery: cleanText(entry?.recovery, 1000), nextMorning: cleanText(entry?.nextMorning, 1000) })).filter(entry => entry.date && (entry.workout || entry.recovery || entry.nextMorning)) : [];
@@ -118,10 +124,10 @@ function validateSnapshot(value) {
       return { key: cleanText(log?.key, 80), complete: Boolean(log?.complete), updatedAt: cleanText(log?.updatedAt, 40), painDuring: cleanText(log?.painDuring, 8), painAfter: cleanText(log?.painAfter, 8), painNext: cleanText(log?.painNext, 8), notes: cleanText(log?.notes, 1000), exercises };
     }).filter(log => log.key) : [];
     const ready = sourceDate <= new Date().toISOString().slice(0, 10);
-    return { schemaVersion: 3, cadence: 'daily', sourceDate, targetDate, sourceFingerprint: value.sourceFingerprint, ready, sourceComplete: Boolean(value.sourceComplete), goals, equipment: cleanEquipment, history, legacyHistory, recentDays: days, notes, targetPlan: sanitizePlan(value.targetPlan) };
+    return { schemaVersion: 3, cadence: 'daily', sourceDate, targetDate, sourceFingerprint: value.sourceFingerprint, ready, sourceComplete: Boolean(value.sourceComplete), goals, equipment: cleanEquipment, history, skillPathways, legacyHistory, recentDays: days, notes, targetPlan: sanitizePlan(value.targetPlan) };
   }
   const completedSessions = days.filter(day => day.workout.complete).length; const ready = completedSessions >= 5 || new Date().toISOString().slice(0, 10) >= targetDate;
-  return { schemaVersion: 2, sourceWeekStart: sourceDate, nextWeekStart: targetDate, sourceFingerprint: value.sourceFingerprint, ready, completedSessions, goals, equipment: cleanEquipment, history, previousWeek, days };
+  return { schemaVersion: 2, sourceWeekStart: sourceDate, nextWeekStart: targetDate, sourceFingerprint: value.sourceFingerprint, ready, completedSessions, goals, equipment: cleanEquipment, history, skillPathways, previousWeek, days };
 }
 function validateDraft(value) {
   const daily = value?.cadence === 'daily' || value?.sourceDate; const sourceDate = daily ? value?.sourceDate : value?.sourceWeekStart; const targetDate = daily ? value?.targetDate : value?.nextWeekStart;

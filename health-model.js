@@ -9,7 +9,7 @@
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const clone = value => JSON.parse(JSON.stringify(value));
 
-  const RULES_VERSION = 6;
+  const RULES_VERSION = 7;
   const equipmentDefaults = { pullUpBar: true, bands: ['Unlabelled band'], dumbbellsKg: [5, 5], kettlebellsKg: [10], rowingMachine: true };
   const goalDefaults = { pullups: null, dips: null, hollow: null, kneeRaises: null, support: null, runMinutes: null, checklist: {} };
   const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, aiWeeklyReview: false, upperBodyCleared: true, clearanceNotes: 'Physio cleared all exercise categories; rebuild load, volume and skill complexity gradually.', equipment: equipmentDefaults };
@@ -114,7 +114,7 @@
     return plans[recorded && Number.isInteger(override) && override >= 0 && override < 7 ? override : weekday(key)];
   }
 
-  const isShoulderLoading = id => /pull|row|push|scap|wallslide|(^|-)er$|warm/.test(id) && !/deadbug/.test(id);
+  const isShoulderLoading = id => (/pull|row|push|scap|wallslide|(^|-)er$|warm/.test(id) && !/deadbug/.test(id)) || ['d3s-knee', 'd5s-support'].includes(id);
   function recoveryForWorkout(health, key) {
     const next = health.days[addDays(key, 1)]?.recovery?.previousWorkout;
     if (next?.workoutDate === key) return next;
@@ -279,6 +279,7 @@
       if (pullup) {
         const currentBand = equipment.bands.find(label => assistance.toLowerCase().includes(label.toLowerCase())); const bandIndex = equipment.bands.indexOf(currentBand);
         if (totalReps >= 9 && bandIndex > 0) { const lighter = equipment.bands[bandIndex - 1]; return { from, to: target(`3 sets of 2 / 2 / 1 pull-ups with ${lighter} assistance; stop at 3 RIR`, { targetSets: 3, targetReps: [2, 2, 1], implement: 'pull-up bar', loadLabel: `${lighter} assistance`, variation: 'assisted' }) }; }
+        if (totalReps >= 9 && bandIndex === 0) return { from, to: target('3 controlled bodyweight pull-up singles; stop at 3 RIR', { targetSets: 3, targetReps: [1, 1, 1], implement: 'pull-up bar', loadLabel: 'bodyweight', variation: 'bodyweight' }) };
         const next = Math.max(4, totalReps + 1); const split = distribute(next);
         return { from, to: target(`3 sets of ${split.join(' / ')} ${movement} with ${assistance}; stop at 3 RIR`, { targetSets: 3, targetReps: split, implement: 'pull-up bar', loadLabel: assistance, variation: band ? 'assisted' : 'bodyweight' }) };
       }
@@ -333,10 +334,89 @@
     'd5s-support': { day: 4, replaces: 'd1e-pushup' },
     'd5s-rowline': { day: 4, replaces: 'd3e-row' }
   };
+
+  function allExerciseEvidence(health, through, ids) {
+    const wanted = new Set(ids);
+    return Object.entries(health.days).filter(([key]) => key <= through).sort(([a], [b]) => a.localeCompare(b)).flatMap(([key, day]) => {
+      const workout = day.workout || {};
+      return Object.entries(workout.exercises || {}).filter(([id]) => wanted.has(id)).map(([id, entry]) => ({ id, key, entry, workout, recovery: recoveryForWorkout(health, key), plan: day.plan }));
+    });
+  }
+  const stageConcern = exposure => Number(exposure.workout.painDuring) >= 3 || Number(exposure.workout.effort) >= 9 || Number(exposure.recovery?.pain) >= 3 || exposure.recovery?.status === 'worse' || exposure.recovery?.plateSymptoms || ['okay', 'poor'].includes(exposure.entry.technique) || (exposure.entry.rir !== undefined && exposure.entry.rir !== '' && Number(exposure.entry.rir) < 2);
+  const stageBlocked = (exposure, shoulder) => stageConcern(exposure) || !exposure.entry.done || exposure.entry.technique !== 'clean' || !Number.isFinite(Number(exposure.entry.rir)) || (shoulder && !exposure.recovery?.complete);
+  function pathwayGate(health, through, gate) {
+    const evidence = allExerciseEvidence(health, through, gate.ids);
+    const passing = evidence.filter(exposure => exposureIsQualified(exposure, gate.shoulder)).filter(exposure => gate.test(exposure.entry, exposure, normalizeEquipment(health.settings.equipment)));
+    const passingDates = [...new Map(passing.map(exposure => [exposure.key, exposure])).values()];
+    const required = gate.required || 2; const latestPassing = passingDates.slice(-required);
+    const concernAfterEvidence = latestPassing.length ? evidence.some(exposure => exposure.key >= latestPassing[0].key && stageConcern(exposure)) : evidence.slice(-2).some(stageConcern);
+    const achieved = latestPassing.length >= required && !concernAfterEvidence;
+    const latest = evidence.at(-1) || null;
+    return { achieved, passingSessions: passingDates.length, required, concerns: evidence.filter(stageConcern).length, latest, blocked: Boolean(latest && stageBlocked(latest, gate.shoulder)) };
+  }
+  function skillPathways(health, through = dateKey()) {
+    const equipment = normalizeEquipment(health.settings.equipment);
+    const sets = entry => numericSets(entry); const atLeast = (entry, setCount, minimum) => sets(entry).length >= setCount && Math.min(...sets(entry)) >= minimum;
+    const load = entry => String(entry?.load || '').toLowerCase();
+    const assisted = entry => /assist|band/.test(load(entry)) || equipment.bands.some(label => load(entry).includes(label.toLowerCase()));
+    const lightestBand = String(equipment.bands[0] || '').toLowerCase();
+    const strict = entry => /bodyweight|unassisted|no assist|strict/.test(load(entry)) && !assisted(entry);
+    const configs = [
+      {
+        id: 'pull', title: 'Pulling', stages: ['Supported row', 'Assisted pull-up', 'Strict pull-up', 'Chest-to-bar preparation', 'Explosive pull', 'Muscle-up'],
+        gates: [
+          { ids: ['d3e-row'], shoulder: true, target: '3 × 10 supported rows', test: entry => atLeast(entry, 3, 10) },
+          { ids: ['d3e-pullup-single'], shoulder: true, target: `3 × 3 pull-ups with ${equipment.bands[0] || 'the lightest available band'} assistance`, test: entry => assisted(entry) && (!lightestBand || load(entry).includes(lightestBand) || /lightest/.test(load(entry))) && atLeast(entry, 3, 3) },
+          { ids: ['d3e-pullup-single'], shoulder: true, target: '8 total strict bodyweight pull-ups across 3 sets', test: entry => strict(entry) && sets(entry).length >= 3 && sets(entry).reduce((sum, value) => sum + value, 0) >= 8 },
+          { ids: ['d5s-rowline'], shoulder: true, target: '3 × 10 chest-to-bar line rows', test: entry => atLeast(entry, 3, 10) }
+        ],
+        planByLevel: { 3: 'd5s-rowline' }
+      },
+      {
+        id: 'push', title: 'Pushing', stages: ['Incline push-up', 'Floor push-up', 'Straight-bar support', 'Pike push-up', 'Handstand push-up'],
+        gates: [
+          { ids: ['d1e-pushup'], shoulder: true, target: '3 × 10 clean incline push-ups', test: entry => !/floor/.test(load(entry)) && atLeast(entry, 3, 10) },
+          { ids: ['d1e-pushup'], shoulder: true, target: '3 × 8 floor push-ups', test: entry => /floor/.test(load(entry)) && atLeast(entry, 3, 8) },
+          { ids: ['d5s-support'], shoulder: true, target: '3 × 20-sec feet-assisted straight-bar supports', test: entry => atLeast(entry, 3, 20) }
+        ],
+        planByLevel: { 2: 'd5s-support' }
+      },
+      {
+        id: 'core', title: 'Core', stages: ['Dead bug', 'Hollow hold', 'Knee raise', 'Leg raise', 'Tuck L-sit', 'L-sit'],
+        gates: [
+          { ids: ['d1m-deadbug'], shoulder: false, target: '2 × 8 controlled dead bugs each side', test: entry => atLeast(entry, 2, 8) },
+          { ids: ['d3s-hollow'], shoulder: false, target: '3 × 20-sec hollow holds', test: entry => atLeast(entry, 3, 20) },
+          { ids: ['d3s-knee'], shoulder: true, target: '2 × 8 controlled knee raises', test: entry => atLeast(entry, 2, 8) }
+        ],
+        planByLevel: { 1: 'd3s-hollow', 2: 'd3s-knee' }
+      },
+      {
+        id: 'control', title: 'Shoulder control', stages: ['Scapular control', 'Loaded support', 'Handstand preparation'],
+        gates: [
+          { ids: ['d1m-scap', 'd3e-scap-pull'], shoulder: true, target: '2 clean control sessions at the full prescribed target', test: entry => sets(entry).length >= 2 && Math.min(...sets(entry)) >= 6 },
+          { ids: ['d5s-support'], shoulder: true, target: '3 × 20-sec feet-assisted straight-bar supports', test: entry => atLeast(entry, 3, 20) }
+        ],
+        planByLevel: {}
+      }
+    ];
+    return configs.map(config => {
+      const gates = config.gates.map(gate => pathwayGate(health, through, gate)); let level = 0;
+      gates.forEach((result, index) => { if (result.achieved) level = Math.max(level, index + 1); });
+      level = Math.min(level, config.stages.length - 1);
+      const gate = config.gates[level]; const result = gates[level]; const blocked = result?.blocked;
+      return {
+        id: config.id, title: config.title, stages: config.stages, level, current: config.stages[level], next: config.stages[level + 1] || null,
+        target: gate?.target || 'Keep building clean, symptom-stable practice before the next advanced stage is prescribed.',
+        passingSessions: result?.passingSessions || 0, requiredSessions: result?.required || 2,
+        status: blocked ? 'HOLD' : result?.passingSessions ? 'BUILDING' : 'START',
+        evidence: blocked ? 'The latest relevant record needs a hold or regression.' : `${Math.min(result?.passingSessions || 0, result?.required || 2)}/${result?.required || 2} clean target sessions`,
+        planExerciseId: config.planByLevel[level] || null
+      };
+    });
+  }
   function goalAlignedItems(health, start, value) {
-    const goals = normalizeGoals(value); const equipment = normalizeEquipment(health.settings.equipment); const checks = goals.checklist;
-    const hasBenchmarks = Object.entries(goals).some(([key, item]) => key !== 'checklist' && item !== null) || Object.keys(checks).length;
-    if (!hasBenchmarks) return [];
+    const goals = normalizeGoals(value); const equipment = normalizeEquipment(health.settings.equipment);
+    const pathways = Object.fromEntries(skillPathways(health, addDays(start, 6)).map(pathway => [pathway.id, pathway]));
     const evidenceFor = ids => ids.flatMap(id => exerciseEvidence(health, start, id, 2));
     const hasConcern = evidence => evidence.some(x => Number(x.workout.painDuring) >= 3 || Number(x.recovery?.pain) >= 3 || x.recovery?.status === 'worse' || x.recovery?.plateSymptoms || ['okay', 'poor'].includes(x.entry.technique) || (x.entry.rir !== '' && Number(x.entry.rir) < 2));
     const qualified = (ids, shoulder = true) => { const evidence = evidenceFor(ids); return !hasConcern(evidence) && evidence.filter(x => exposureIsQualified(x, shoulder)).length >= 2; };
@@ -344,19 +424,19 @@
       const latest = evidenceFor(ids).sort((a, b) => b.key.localeCompare(a.key))[0]; return latest ? setSummary(latest.entry) : 'Two-week readiness record';
     };
     const items = [];
-    if ((Number(goals.kneeRaises) >= 6 || checks.kneeraise10) && equipment.pullUpBar && qualified(['d3e-pullup-single', 'd3e-scap-pull'])) {
+    if (pathways.core.planExerciseId === 'd3s-knee' && equipment.pullUpBar && qualified(['d3s-hollow'], false)) {
       const seconds = Math.max(6, Math.min(10, Number(goals.kneeRaises) || 6));
-      items.push({ id: 'd3s-knee', name: conservativePrescription['d3s-knee'].name, state: 'PROGRESS', from: latestFrom(['d3e-pullup-single', 'd3e-scap-pull']), to: `2 × ${seconds} controlled knee raises using the least shoulder-loading regression that stays clean`, reason: 'The knee-raise benchmark and two-week pulling/recovery record support replacing one dead-bug slot with goal-specific trunk work; volume is not added.', target: target(`2 × ${seconds} controlled knee raises using the least shoulder-loading regression that stays clean`, { targetSets: 2, targetReps: seconds, implement: 'pull-up bar or bodyweight regression', loadLabel: 'bodyweight', variation: 'regression' }) });
-    } else if ((Number(goals.hollow) >= 15 || checks.hollow30) && qualified(['d1m-deadbug'], false)) {
-      const seconds = Math.max(15, Math.min(30, Number(goals.hollow) || 20));
-      items.push({ id: 'd3s-hollow', name: conservativePrescription['d3s-hollow'].name, state: 'PROGRESS', from: latestFrom(['d1m-deadbug']), to: `3 × ${seconds}-sec hollow holds with the easiest clean lever`, reason: 'The hollow benchmark and two-week trunk-control record support replacing one dead-bug slot with a muscle-up-specific trunk variation.', target: target(`3 × ${seconds}-sec hollow holds with the easiest clean lever`, { targetSets: 3, targetReps: seconds, implement: 'bodyweight', loadLabel: 'bodyweight', variation: 'bent-knee-as-needed' }) });
+      items.push({ id: 'd3s-knee', name: conservativePrescription['d3s-knee'].name, state: 'PROGRESS', from: latestFrom(['d3s-hollow']), to: `2 × ${seconds} controlled knee raises using the least shoulder-loading regression that stays clean`, reason: 'Two clean target-level hollow-hold sessions support replacing one dead-bug slot with the next core skill; weekly volume is not added.', target: target(`2 × ${seconds} controlled knee raises using the least shoulder-loading regression that stays clean`, { targetSets: 2, targetReps: seconds, implement: 'pull-up bar or bodyweight regression', loadLabel: 'bodyweight', variation: 'regression' }) });
+    } else if (pathways.core.planExerciseId === 'd3s-hollow' && qualified(['d1m-deadbug'], false)) {
+      const seconds = 20;
+      items.push({ id: 'd3s-hollow', name: conservativePrescription['d3s-hollow'].name, state: 'PROGRESS', from: latestFrom(['d1m-deadbug']), to: `3 × ${seconds}-sec hollow holds with the easiest clean lever`, reason: 'Two clean target-level dead-bug sessions support replacing one slot with the next muscle-up-specific trunk variation.', target: target(`3 × ${seconds}-sec hollow holds with the easiest clean lever`, { targetSets: 3, targetReps: seconds, implement: 'bodyweight', loadLabel: 'bodyweight', variation: 'bent-knee-as-needed' }) });
     }
-    if ((Number(goals.pullups) >= 3 || checks.pull3 || checks.pull8) && equipment.bands.length && qualified(['d3e-pullup-single', 'd3e-row'])) {
+    if (pathways.pull.planExerciseId === 'd5s-rowline' && equipment.bands.length && qualified(['d3e-pullup-single'])) {
       const band = equipment.bands[0];
-      items.push({ id: 'd5s-rowline', name: conservativePrescription['d5s-rowline'].name, state: 'PROGRESS', from: latestFrom(['d3e-row']), to: `3 × 8 chest-to-bar line rows with ${band}; keep 3 RIR`, reason: 'Pull-up progress plus two weeks of clean pulling supports changing the Friday row angle toward the muscle-up pulling line; Monday rows remain unchanged.', target: target(`3 × 8 chest-to-bar line rows with ${band}; keep 3 RIR`, { targetSets: 3, targetReps: 8, implement: 'band', loadLabel: band, variation: 'chest-to-bar-line' }) });
-    } else if ((Number(goals.support) >= 10 || checks.support30) && equipment.pullUpBar && qualified(['d1e-pushup'])) {
-      const seconds = Math.max(10, Math.min(20, Number(goals.support) || 10));
-      items.push({ id: 'd5s-support', name: conservativePrescription['d5s-support'].name, state: 'PROGRESS', from: latestFrom(['d1e-pushup']), to: `3 × ${seconds}-sec feet-assisted straight-bar top supports`, reason: 'The support benchmark and two-week pushing/recovery record support replacing Friday push-ups with an assisted muscle-up finish position; the weekly pushing dose does not increase.', target: target(`3 × ${seconds}-sec feet-assisted straight-bar top supports`, { targetSets: 3, targetReps: seconds, implement: 'pull-up bar with foot assistance', loadLabel: 'feet-assisted bodyweight', variation: 'assisted-support' }) });
+      items.push({ id: 'd5s-rowline', name: conservativePrescription['d5s-rowline'].name, state: 'PROGRESS', from: latestFrom(['d3e-pullup-single']), to: `3 × 8 chest-to-bar line rows with ${band}; keep 3 RIR`, reason: 'Two clean target-level strict pull-up sessions support changing the Friday row angle toward the muscle-up pulling line; Monday rows remain unchanged.', target: target(`3 × 8 chest-to-bar line rows with ${band}; keep 3 RIR`, { targetSets: 3, targetReps: 8, implement: 'band', loadLabel: band, variation: 'chest-to-bar-line' }) });
+    } else if (pathways.push.planExerciseId === 'd5s-support' && equipment.pullUpBar && qualified(['d1e-pushup'])) {
+      const seconds = 15;
+      items.push({ id: 'd5s-support', name: conservativePrescription['d5s-support'].name, state: 'PROGRESS', from: latestFrom(['d1e-pushup']), to: `3 × ${seconds}-sec feet-assisted straight-bar top supports`, reason: 'Two clean target-level floor push-up sessions support replacing Friday push-ups with an assisted muscle-up finish position; weekly pushing volume does not increase.', target: target(`3 × ${seconds}-sec feet-assisted straight-bar top supports`, { targetSets: 3, targetReps: seconds, implement: 'pull-up bar with foot assistance', loadLabel: 'feet-assisted bodyweight', variation: 'assisted-support' }) });
     }
     return items;
   }
@@ -461,7 +541,7 @@
     return {
       schemaVersion: 2, sourceWeekStart, nextWeekStart, sourceFingerprint: sourceFingerprint(health, sourceWeekStart, goals),
       ready: completedSessions >= 5 || today >= nextWeekStart, completedSessions,
-      goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment),
+      goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment), skillPathways: skillPathways(health, addDays(sourceWeekStart, 6)),
       history: longitudinalHistory(health, sourceWeekStart),
       previousWeek: { sourceWeekStart: previousWeekStart, days: boundedReviewDays(health, previousWeekStart) }, days,
       safetyPolicy: {
@@ -509,7 +589,7 @@
     return {
       schemaVersion: 3, cadence: 'daily', sourceDate, targetDate, sourceFingerprint: dailyReviewFingerprint(health, sourceDate, goals, legacyLogs),
       ready: sourceDate <= today, sourceComplete: Boolean(sourceDay.workout?.complete), goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment),
-      history: longitudinalHistory(health, sourceDate, false), legacyHistory: legacyReviewContext(legacyLogs), recentDays: [...boundedReviewDays(health, addDays(sourceDate, -13)), ...boundedReviewDays(health, addDays(sourceDate, -6))],
+      history: longitudinalHistory(health, sourceDate, false), skillPathways: skillPathways(health, sourceDate), legacyHistory: legacyReviewContext(legacyLogs), recentDays: [...boundedReviewDays(health, addDays(sourceDate, -13)), ...boundedReviewDays(health, addDays(sourceDate, -6))],
       notes: reviewTextContext(health, sourceDate, goals), targetPlan: boundedReviewDays(health, targetDate)[0].plan,
       safetyPolicy: {
         progress: 'Completed target, clean technique, 2–4 RIR, effort below 9, shoulder pain no higher than 2/10, and stable recovery evidence.',
@@ -699,6 +779,6 @@
     for (let i = 0; i < days; i++) { const key = addDays(from, i); for (const e of timeline(health, key)) { const start = new Date(`${key}T${e.time}:00`); const end = new Date(start.getTime() + Math.max(5, e.minutes) * 60000); const local = d => `${dateKey(d).replaceAll('-', '')}T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00`; lines.push('BEGIN:VEVENT', `UID:${key}-${e.id.replace(':', '')}@movestrong.local`, `DTSTAMP:${stamp}`, `DTSTART:${local(start)}`, `DTEND:${local(end)}`, `SUMMARY:${e.title}`, 'DESCRIPTION:Personal schedule. Adjust to your agreed health and training limits.'); if (['movement', 'sauna', 'checkin'].includes(e.kind)) lines.push('BEGIN:VALARM', 'TRIGGER:PT0S', 'ACTION:DISPLAY', `DESCRIPTION:${e.title}`, 'END:VALARM'); lines.push('END:VEVENT'); } }
     lines.push('END:VCALENDAR'); return lines.join('\r\n') + '\r\n';
   }
-  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, normalizeGoals, mergeHealth, mergeCloud, dayRecord, plans, planFor, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, longitudinalHistory, weeklyReviewSnapshot, dailyReviewSnapshot, storeReviewedDraft, approveReviewedDraft, storeDailyReviewedPlan, activateDailyReviewedPlan, isShoulderLoading, exerciseEquipment };
+  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, normalizeGoals, mergeHealth, mergeCloud, dayRecord, plans, planFor, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, longitudinalHistory, skillPathways, weeklyReviewSnapshot, dailyReviewSnapshot, storeReviewedDraft, approveReviewedDraft, storeDailyReviewedPlan, activateDailyReviewedPlan, isShoulderLoading, exerciseEquipment };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.HealthModel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
