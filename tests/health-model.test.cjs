@@ -108,6 +108,10 @@ test('band progressions use the exact configured labels', () => {
   const pull = M.defaults(); pull.settings.equipment.bands = ['yellow', 'red'];
   addQualifiedWeek(pull, 'd3e-pullup-single', { sets: ['3', '3', '3'], load: 'red assistance' });
   assert.match(M.generateNextWeek(pull, '2026-10-05').items.find(item => item.id === 'd3e-pullup-single').to, /yellow assistance/);
+
+  const lightest = M.defaults(); lightest.settings.equipment.bands = ['yellow', 'red'];
+  addQualifiedWeek(lightest, 'd3e-pullup-single', { sets: ['3', '3', '3'], load: 'yellow assistance' });
+  assert.match(M.generateNextWeek(lightest, '2026-10-05').items.find(item => item.id === 'd3e-pullup-single').to, /bodyweight pull-up singles/);
 });
 
 test('cardio prescription uses the configured rower and preserves asthma-safe progression', () => {
@@ -223,11 +227,11 @@ test('daily reviewed plan changes only tomorrow and never rewrites a started tar
   assert.equal(blocked.reviewDrafts['2026-10-15'].status, 'skipped');
 });
 
-test('goal-aware generation rotates a related exercise after two clean weeks instead of only adding reps', () => {
+test('recorded skill targets automatically rotate in the next exercise without a manual milestone', () => {
   const data = M.defaults();
-  M.dayRecord(data, '2026-09-29').workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', exercises: { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5 kg dumbbell', rir: '3', technique: 'clean' } }, updatedAt: '2026-09-29T08:00:00Z' };
-  addQualifiedWeek(data, 'd3e-row', { sets: ['12', '12', '12'], load: '5 kg dumbbell' });
-  const review = M.generateNextWeek(data, '2026-10-05', { pullups: '3', checklist: { pull3: true } });
+  M.dayRecord(data, '2026-09-29').workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', exercises: { 'd3e-pullup-single': { done: true, sets: ['3', '3', '2'], load: 'bodyweight', rir: '3', technique: 'clean' } }, updatedAt: '2026-09-29T08:00:00Z' };
+  addQualifiedWeek(data, 'd3e-pullup-single', { sets: ['3', '3', '2'], load: 'bodyweight' });
+  const review = M.generateNextWeek(data, '2026-10-05');
   const rotation = review.items.find(item => item.id === 'd5s-rowline');
   assert.ok(rotation);
   assert.match(rotation.reason, /Friday row angle/i);
@@ -235,6 +239,45 @@ test('goal-aware generation rotates a related exercise after two clean weeks ins
   assert.ok(friday.ids.includes('d5s-rowline'));
   assert.ok(!friday.ids.includes('d3e-row'));
   assert.match(friday.exerciseOverrides['d5s-rowline'].prescription, /chest-to-bar line rows/i);
+});
+
+test('skill pathways derive stages from two clean target sessions and ignore manual milestones', () => {
+  const data = M.defaults(); data.milestones.pull = { level: 5, best: 'manual override' };
+  let pull = M.skillPathways(data, '2026-10-10').find(pathway => pathway.id === 'pull');
+  assert.equal(pull.current, 'Supported row');
+  for (const key of ['2026-10-05', '2026-10-09']) {
+    M.dayRecord(data, key).workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', exercises: { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5 kg dumbbell', rir: '3', technique: 'clean' } }, updatedAt: `${key}T08:00:00Z` };
+  }
+  pull = M.skillPathways(data, '2026-10-10').find(pathway => pathway.id === 'pull');
+  assert.equal(pull.current, 'Assisted pull-up');
+  assert.equal(pull.evidence, '0/2 clean target sessions');
+});
+
+test('shoulder pathways require stable next-morning recovery and reset after a concern', () => {
+  const data = M.defaults();
+  for (const key of ['2026-10-05', '2026-10-09']) {
+    M.dayRecord(data, key).workout = { complete: true, painDuring: '1', effort: '6', exercises: { 'd3e-row': { done: true, sets: ['10', '10', '10'], load: '5 kg dumbbell', rir: '3', technique: 'clean' } }, updatedAt: `${key}T08:00:00Z` };
+  }
+  const missing = M.skillPathways(data, '2026-10-10').find(pathway => pathway.id === 'pull');
+  assert.equal(missing.current, 'Supported row');
+  assert.equal(missing.status, 'HOLD');
+  data.days['2026-10-05'].workout.painNext = '1'; data.days['2026-10-09'].workout.painNext = '3';
+  const pull = M.skillPathways(data, '2026-10-10').find(pathway => pathway.id === 'pull');
+  assert.equal(pull.current, 'Supported row');
+  assert.equal(pull.status, 'HOLD');
+});
+
+test('core target automatically replaces one future dead-bug slot with hollow holds', () => {
+  const data = M.defaults();
+  for (let i = 0; i < 5; i++) {
+    const key = M.addDays('2026-10-05', i); const hasCore = i === 0 || i === 2;
+    M.dayRecord(data, key).workout = { complete: true, painDuring: '1', effort: '6', exercises: hasCore ? { 'd1m-deadbug': { done: true, sets: ['8', '8'], load: 'bodyweight', rir: '3', technique: 'clean' } } : {}, updatedAt: `${key}T08:00:00Z` };
+  }
+  const review = M.generateNextWeek(data, '2026-10-05');
+  assert.ok(review.items.some(item => item.id === 'd3s-hollow'));
+  const friday = M.planFor(data, '2026-10-16');
+  assert.ok(friday.ids.includes('d3s-hollow'));
+  assert.ok(!friday.ids.includes('d1m-deadbug'));
 });
 
 test('a prior-week symptom concern prevents progression until two clean current exposures exist', () => {
@@ -316,7 +359,7 @@ test('stale v1 generated weeks refresh before the following week is started', ()
   M.ensureGeneratedWeeks(data, '2026-10-12');
   const after = M.planFor(data, '2026-10-12');
   assert.ok(after.exerciseOverrides['d3e-row']);
-  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 6);
+  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 7);
 });
 
 test('started days are preserved while later days of a refreshed week can update', () => {

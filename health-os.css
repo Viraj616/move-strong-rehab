@@ -171,6 +171,14 @@ progress::-moz-progress-bar { background:#568155; }
 .os-stage-track { display:flex; gap:5px; margin:22px 0 15px; }
 .os-stage-track span { flex:1; height:5px; border-radius:4px; background:#e8ede4; }
 .os-stage-track .reached { background:#5c8254; }
+.os-pathway-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.os-pathway-heading h3 { margin-top:5px; }
+.os-pathway-route { display:flex; flex-wrap:wrap; align-items:center; gap:7px; color:#8a9489; font-size:.72rem; line-height:1.5; }
+.os-pathway-route b { color:#bdc5bb; font-weight:500; }
+.os-pathway-route .current { color:#31583b; font-weight:800; }
+.os-pathway-next { display:flex; flex-direction:column; gap:4px; padding:14px 16px; margin:18px 0; border-radius:14px; background:#f1f6ec; border:1px solid #dce8d4; }
+.os-pathway-next small { color:#6c786b; font-size:.62rem; letter-spacing:.1em; font-weight:800; }
+.os-pathway-next strong { color:#31583b; }
 .os-source-links { display:grid; gap:12px; margin:18px 0; font-size:.85rem; }
 .os-source-links a { color:#416a4f; }
 .os-reminder { position:fixed; bottom:105px; right:24px; z-index:85; background:white; box-shadow:0 15px 70px #20352d33; border:1px solid #c7d8bd; border-radius:22px; padding:24px; width:min(430px,calc(100% - 32px)); }
