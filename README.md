@@ -7,6 +7,7 @@ A local-first six-week Progressive Web App (PWA) containing the six-day Strength
 - Six training days, each with a 10- or 20-minute morning session, a longer gym evening session, and a home-kit replacement session for travel days
 - Text technique cues and clavicle-specific precautions
 - Tap-to-open detailed exercise technique guides
+- Exercise-specific Bob & Brad X6 Ultra guidance inside each workout, with conservative timing, speed, heat and clavicle-plate safety limits
 - Text-only exercise cards and guides, without exercise-mimicking pictures or animations
 - Sets, repetitions, loads/levels, per-exercise RIR, technique quality and exercise-completion tracking
 - Rest timer
@@ -175,6 +176,6 @@ The app stores the Firebase refresh token, project ID and email in a separate lo
 - This is an independent plan inspired by publicly shown movement-training principles. It is not affiliated with Strength Side and does not reproduce a paid programme.
 - The app does not diagnose injury or replace surgeon/physiotherapist clearance.
 - Stop progression for sharp fracture-site or plate pain, new swelling, deformity, neurological symptoms, sudden weakness, or worsening symptoms after a fall.
-# Move Strong Health OS · version 3.6
+# Move Strong Health OS · version 3.10
 
 The calendar-first refresh is documented in [HEALTH_OS.md](HEALTH_OS.md), including data preservation, local preview, tests and notification limitations. The original programme documentation below is retained for reference; its six-week records remain accessible through Train → Original programme.

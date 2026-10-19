@@ -1,4 +1,4 @@
-# Move Strong 3.9
+# Move Strong 3.10
 
 The app opens on a dated Today timeline, with a morning routine, scheduled training, movement breaks, optional sauna and bedtime. Week shows only committed current or generated plans; speculative month views are deliberately omitted. Log offers the dated programme, text-only technique guidance, set logging and previous results without exercise-mimicking imagery. Recovery logs sleep, shoulder symptoms, energy, breathing and sauna/skin response. Review explains daily adaptations and derives skill pathways automatically from recorded performance and recovery. You contains schedule, sync and backup preferences.
 
@@ -34,11 +34,11 @@ The 21–25 September 2026 records are the first baseline. The generated week of
 
 ## Training scope
 
-The programme reuses conservative exercises from the existing app. Advanced-skill goals guide exercise selection only after the required symptom-stable evidence; they never bypass load, pain, technique, recovery or equipment gates. Check-ins use transparent symptom-based prompts, not numerical readiness scores. Sauna is optional; the app records skin response without claiming a causal effect or treating eczema. The You screen links clinical sources.
+The programme reuses conservative exercises from the existing app. Advanced-skill goals guide exercise selection only after the required symptom-stable evidence; they never bypass load, pain, technique, recovery or equipment gates. Each opened workout derives optional X6 Ultra targets from its actual exercises, including adaptive substitutions. The guide defaults to brief low-speed use, keeps percussion and heat away from the clavicle hardware region, and describes the device only as a possible comfort or short-term mobility tool—not as a way to improve strength, hypertrophy, fracture healing or training adaptations. Check-ins use transparent symptom-based prompts, not numerical readiness scores. Sauna is optional; the app records skin response without claiming a causal effect or treating eczema. The You screen links clinical sources.
 
 ## Run and verify
 
-No build step or production dependencies are needed. Run `node dev-server.cjs` and open `http://127.0.0.1:4173`. Model tests: `node --test tests/health-model.test.cjs`. Browser checks: install Playwright separately or set `PLAYWRIGHT_PATH` to an available installation, then run `node tests/browser.cjs` and `node tests/adaptive-browser.cjs`. The browser tests default to installed Edge; set `BROWSER_CHANNEL` for another installed Chromium channel. They use isolated browser profiles and synthetic history, and do not access the user's real browser records.
+No build step or production dependencies are needed. Run `node dev-server.cjs` and open `http://127.0.0.1:4173`. Model and guidance tests: `node --test tests/health-model.test.cjs tests/massage-guidance.test.cjs`. Browser checks: install Playwright separately or set `PLAYWRIGHT_PATH` to an available installation, then run `node tests/massage-browser.cjs`, `node tests/browser.cjs` and `node tests/adaptive-browser.cjs`. The browser tests default to installed Edge; set `BROWSER_CHANNEL` for another installed Chromium channel. They use isolated browser profiles and synthetic history, and do not access the user's real browser records.
 
 Browser coverage includes desktop/mobile layout, old-record preservation, first-write snapshot, routine persistence, committed-week planning, text-only exercise guidance, workout completion, check-ins, sauna, automatic skill-pathway rendering, settings, reminder preview, one-week ICS download, backup merge, offline reload and corrupted storage protection. Screenshots are written to ignored `artifacts/`.
 
