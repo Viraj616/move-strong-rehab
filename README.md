@@ -176,6 +176,6 @@ The app stores the Firebase refresh token, project ID and email in a separate lo
 - This is an independent plan inspired by publicly shown movement-training principles. It is not affiliated with Strength Side and does not reproduce a paid programme.
 - The app does not diagnose injury or replace surgeon/physiotherapist clearance.
 - Stop progression for sharp fracture-site or plate pain, new swelling, deformity, neurological symptoms, sudden weakness, or worsening symptoms after a fall.
-# Move Strong Health OS · version 3.10
+# Move Strong Health OS · version 3.11
 
 The calendar-first refresh is documented in [HEALTH_OS.md](HEALTH_OS.md), including data preservation, local preview, tests and notification limitations. The original programme documentation below is retained for reference; its six-week records remain accessible through Train → Original programme.

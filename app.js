@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '3.10.0';
+const APP_VERSION = '3.11.0';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -320,11 +320,13 @@ const TRANSITION_SESSIONS = {
   },
   5: {
     skill: {
-      title: 'Muscle-up prerequisites', duration: '18–25 min', intensity: 'Foundation strength; no dips yet',
+      title: 'Muscle-up prerequisites', duration: '18–25 min', intensity: 'Foundation strength; advanced drills are earned',
       exercises: [
         ex('d5s-support', 'Feet-assisted straight-bar top support', '3 × 10–20 sec', 3, 'sec', 'support', ['Use a low bar, bench assistance or feet on the floor.', 'Elbows locked gently; chest tall.', 'Press the bar down without shrugging.'], 'This prepares the muscle-up finish without loading deep dips. Keep most weight through the feet initially.', 'Support strength', 'straight bar support hold regression'),
+        ex('d5s-dip', 'Feet-assisted shallow straight-bar dip', '2 × 4–6', 2, 'reps', 'dip', ['Begin in a stable feet-assisted top support.', 'Bend the elbows only through a shallow, controlled range.', 'Use the feet to keep at least 3 reps in reserve.'], 'This appears only after repeated stable support holds. Stop for front-shoulder or focal plate-site pain; do not chase depth.', 'Dip preparation', 'feet assisted straight bar dip regression'),
         ex('d5s-pushup', 'Floor or incline push-up quality set', '2–3 × 5–8', 3, 'reps', 'pushup', ['Use the hardest incline that remains clean.', 'Lower as one unit.', 'Finish with a gentle push-away.'], 'Stop before shoulder asymmetry. This is quality practice, not a max set.', 'Pressing base', 'calisthenics push up progression'),
         ex('d5s-rowline', 'Chest-to-bar line band row', '3 × 8–12', 3, 'reps', 'row', ['Anchor the band high enough to pull toward lower chest.', 'Drive elbows down and back slightly.', 'Keep ribs controlled.'], 'Do not force the elbows far behind the body or jam the front shoulder.', 'Pulling line', 'chest to bar row regression'),
+        ex('d5s-highpull', 'Band-assisted high pull', '3 × 4–6', 3, 'reps', 'pull', ['Use the lightest assistance that keeps the rep smooth.', 'Pull the upper chest toward the bar without kicking.', 'Lower under control and stop well before fatigue.'], 'Earn this from stable chest-to-bar-line rows. No kipping or muscle-up transition attempts.', 'Explosive-pull preparation', 'band assisted chest to bar high pull'),
         ex('d5s-hollow', 'Hollow hold or dead bug hollow', '3 × 20–30 sec', 3, 'sec', 'hollow', ['Keep ribs down.', 'Use bent knees to preserve lower-back position.', 'Breathe shallowly without losing tension.'], 'Keep arms comfortable; overhead position is optional.', 'Muscle-up prerequisite', 'hollow body progression'),
         ex('d5s-scap', 'Scapular depression drill on bar or band', '2 × 6–8', 2, 'reps', 'hang', ['Think shoulders away from ears.', 'Move slowly.', 'Keep elbows straight if using the bar.'], 'Use a band version if hanging is more irritable that day.', 'Shoulder control', 'scapular depression pull up bar')
       ]
@@ -546,7 +548,7 @@ function routeTo(nextRoute) {
 }
 
 function render() {
-  if (['archive', 'old-progress', 'goals'].includes(route)) route = 'home';
+  if (['archive', 'old-progress'].includes(route)) route = 'home';
   window.AppNavigation?.record();
   backBtn.classList.toggle('hidden', route !== 'workout');
   bottomNav.classList.toggle('hidden', route === 'workout');
@@ -768,8 +770,9 @@ function renderExerciseCard(exercise, log) {
   if (!Array.isArray(entry.sets)) entry.sets = Array(exercise.sets).fill('');
   while (entry.sets.length < exercise.sets) entry.sets.push('');
   const guide = getExerciseGuide(exercise);
+  const expectedFor = index => Array.isArray(exercise.targetReps) ? exercise.targetReps[index] : exercise.targetReps;
   const setInputs = Array.from({ length: exercise.sets }, (_, index) => `
-    <div class="log-field"><label>Set ${index + 1} · ${escapeHtml(exercise.unit)}</label><input inputmode="decimal" data-exercise-id="${exercise.id}" data-set-index="${index}" value="${escapeHtml(entry.sets[index] || '')}" placeholder="–"></div>`).join('');
+    <div class="log-field"><label>Set ${index + 1} · ${escapeHtml(exercise.unit)}</label><input inputmode="decimal" data-exercise-id="${exercise.id}" data-set-index="${index}" value="${escapeHtml(entry.sets[index] || '')}" placeholder="${expectedFor(index) ?? '–'}"></div>`).join('');
   return `
     <article class="exercise-card" data-card-id="${exercise.id}">
       <div class="exercise-top exercise-top-text">

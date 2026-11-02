@@ -9,7 +9,7 @@
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const clone = value => JSON.parse(JSON.stringify(value));
 
-  const RULES_VERSION = 7;
+  const RULES_VERSION = 8;
   const equipmentDefaults = { pullUpBar: true, bands: ['Unlabelled band'], dumbbellsKg: [5, 5], kettlebellsKg: [10], rowingMachine: true };
   const goalDefaults = { pullups: null, dips: null, hollow: null, kneeRaises: null, support: null, runMinutes: null, checklist: {} };
   const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, aiWeeklyReview: false, upperBodyCleared: true, clearanceNotes: 'Physio cleared all exercise categories; rebuild load, volume and skill complexity gradually.', equipment: equipmentDefaults };
@@ -49,7 +49,7 @@
     if (!value) return base;
     if (!isObject(value) || ![2, 3, 4].includes(value.schemaVersion) || !isObject(value.days) || !isObject(value.settings)) throw new Error('Unsupported health data');
     const result = { ...base, ...clone(value), schemaVersion: 4, settings: { ...base.settings, ...value.settings, equipment: normalizeEquipment(value.settings.equipment) } };
-    result.settings.upperBodyCleared = true;
+    result.settings.upperBodyCleared = result.settings.upperBodyCleared === true;
     result.settings.clearanceNotes = result.settings.clearanceNotes || base.settings.clearanceNotes;
     result.generatedWeeks = isObject(result.generatedWeeks) ? result.generatedWeeks : {};
     result.weeklyReviews = isObject(result.weeklyReviews) ? result.weeklyReviews : {};
@@ -111,10 +111,30 @@
     const recorded = day?.workout?.complete || day?.workout?.updatedAt || Object.keys(day?.workout?.exercises || {}).length;
     if (!recorded && key < (health.settings.programmeStart || '2026-09-21')) return { title: 'Programme starts 21 September', short: 'Starts 21 Sept', kind: 'rest', minutes: 0, ids: [], pending: true };
     const override = day?.planIndex;
-    return plans[recorded && Number.isInteger(override) && override >= 0 && override < 7 ? override : weekday(key)];
+    return plans[Number.isInteger(override) && override >= 0 && override < 7 ? override : weekday(key)];
   }
 
-  const isShoulderLoading = id => (/pull|row|push|scap|wallslide|(^|-)er$|warm/.test(id) && !/deadbug/.test(id)) || ['d3s-knee', 'd5s-support'].includes(id);
+  function setWorkoutStatus(health, key, status) {
+    if (!['planned', 'skipped'].includes(status)) throw new Error('Invalid workout status');
+    const day = dayRecord(health, key); day.workout ||= { complete: false, exercises: {} };
+    if (status === 'skipped' && day.workout.complete) throw new Error('A completed workout cannot be skipped');
+    day.workout.status = status === 'planned' ? '' : status; day.workout.updatedAt = new Date().toISOString();
+    if (status === 'planned') { delete day.workout.movedTo; if (!day.workout.complete && !Object.keys(day.workout.exercises || {}).length) delete day.workout.updatedAt; }
+    return day.workout;
+  }
+  function shiftPlannedSession(health, fromKey, toKey) {
+    if (!validDate(fromKey) || !validDate(toKey) || fromKey === toKey) throw new Error('Choose a different valid date');
+    const fromDay = dayRecord(health, fromKey); const toDay = dayRecord(health, toKey);
+    if (workoutStarted(fromDay) || workoutStarted(toDay)) throw new Error('Only two unstarted workouts can be swapped');
+    const fromPlan = clone(planFor(health, fromKey)); const toPlan = clone(planFor(health, toKey)); const changedAt = new Date().toISOString();
+    fromDay.plan = toPlan; toDay.plan = fromPlan; fromDay.planSource = 'schedule-swap'; toDay.planSource = 'schedule-swap';
+    fromDay.scheduleChange = { type: 'swap', with: toKey, changedAt }; toDay.scheduleChange = { type: 'swap', with: fromKey, changedAt };
+    return { from: fromPlan, to: toPlan };
+  }
+
+  const isShoulderLoading = id => (/pull|row|push|scap|wallslide|dip|highpull|(^|-)er$|warm/.test(id) && !/deadbug/.test(id)) || ['d3s-knee', 'd5s-support'].includes(id);
+  const workoutStarted = day => Boolean(day?.workout?.updatedAt || day?.workout?.complete || Object.keys(day?.workout?.exercises || {}).length);
+  const usedReliever = workout => workout?.relieverUsed === true || workout?.relieverUsed === 'yes';
   function recoveryForWorkout(health, key) {
     const next = health.days[addDays(key, 1)]?.recovery?.previousWorkout;
     if (next?.workoutDate === key) return next;
@@ -135,7 +155,19 @@
     return sessionsInRange(health, first, 7 * Math.max(1, weeks)).filter(([, d]) => d.workout.exercises?.[id]).map(([key, d]) => ({ key, entry: d.workout.exercises[id], workout: d.workout, recovery: recoveryForWorkout(health, key), plan: d.plan }));
   }
   const exposureIsSafe = exposure => Number(exposure.workout.painDuring || 0) <= 2 && Number(exposure.recovery?.pain || 0) <= 2 && exposure.recovery?.status !== 'worse' && !exposure.recovery?.plateSymptoms;
-  const exposureIsQualified = (exposure, shoulder = false) => exposure.entry.done && exposure.entry.technique === 'clean' && Number(exposure.entry.rir) >= 2 && Number(exposure.entry.rir) <= 4 && Number(exposure.workout.effort || 0) < 9 && exposureIsSafe(exposure) && (!shoulder || exposure.recovery?.complete);
+  function meetsRecordedTarget(exposure, id = exposure?.id) {
+    if (!exposure?.entry?.done) return false;
+    const targetValue = exposure.plan?.exerciseOverrides?.[id] || {};
+    const targetSets = Number(targetValue.targetSets) || 0;
+    const targetReps = targetValue.targetReps;
+    if (!targetSets && targetReps === undefined) return true;
+    const completed = numericSets(exposure.entry);
+    if (targetSets && completed.length < targetSets) return false;
+    const expected = Array.isArray(targetReps) ? targetReps.map(Number) : Number(targetReps);
+    if (Array.isArray(expected)) return expected.every((value, index) => Number.isFinite(value) && Number(completed[index]) >= value);
+    return !Number.isFinite(expected) || completed.slice(0, targetSets || completed.length).every(value => value >= expected);
+  }
+  const exposureIsQualified = (exposure, shoulder = false) => meetsRecordedTarget(exposure, exposure.id) && exposure.entry.technique === 'clean' && Number(exposure.entry.rir) >= 2 && Number(exposure.entry.rir) <= 4 && Number(exposure.workout.effort || 0) < 9 && exposureIsSafe(exposure) && (!shoulder || exposure.recovery?.complete);
   function decideExercise(health, start, id, name = id) {
     const evidence = exerciseEvidence(health, start, id); const priorEvidence = exerciseEvidence(health, start, id, 2).filter(item => item.key < start); const shoulder = isShoulderLoading(id);
     if (!evidence.length) return { id, name, state: 'HOLD', reason: 'No completed exposure was recorded, so the prescription stays unchanged.', evidence: 'No completed sets' };
@@ -143,12 +175,13 @@
     const poor = evidence.some(x => x.entry.technique === 'poor');
     if (highPain || poor) return { id, name, state: 'REGRESS', reason: highPain ? 'Symptoms crossed the progression guardrail or were worse next morning.' : 'Technique was recorded as poor; reduce the challenge until clean control returns.', evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
     const latest = evidence[evidence.length - 1];
-    const missingRecovery = shoulder && !latest.recovery?.complete; const incomplete = !latest.entry.done;
+    const missingClearance = shoulder && !health.settings.upperBodyCleared;
+    const missingRecovery = shoulder && !latest.recovery?.complete; const incomplete = !meetsRecordedTarget({ ...latest, id }, id);
     const hasRir = latest.entry.rir !== undefined && latest.entry.rir !== '' && Number.isFinite(Number(latest.entry.rir));
     const technique = latest.entry.technique || '';
     const borderline = Number(latest.workout.painDuring) === 3 || Number(latest.workout.effort) >= 9 || technique === 'okay' || (hasRir && Number(latest.entry.rir) < 2);
-    if (missingRecovery || incomplete || borderline || technique !== 'clean' || !hasRir) {
-      const reason = missingRecovery ? 'Next-morning recovery is missing; progression is held until recovery is confirmed.' : incomplete ? 'The latest target was not fully completed, so the same movement is retained.' : borderline ? 'Technique, RIR, effort or symptoms were borderline, so load and variation stay unchanged.' : 'Record clean/okay/poor technique and RIR on the latest exposure before automatic progression.';
+    if (missingClearance || missingRecovery || incomplete || borderline || technique !== 'clean' || !hasRir) {
+      const reason = missingClearance ? 'Upper-body clinical clearance is not currently recorded, so shoulder-loading progression is held.' : missingRecovery ? 'Next-morning recovery is missing; progression is held until recovery is confirmed.' : incomplete ? 'The latest prescribed sets or reps were not fully completed, so the same movement is retained.' : borderline ? 'Technique, RIR, effort or symptoms were borderline, so load and variation stay unchanged.' : 'Record clean/okay/poor technique and RIR on the latest exposure before automatic progression.';
       return { id, name, state: 'HOLD', reason, evidence: `${evidence.length} exposure${evidence.length > 1 ? 's' : ''}` };
     }
     const priorConcern = priorEvidence.slice(-1).some(x => Number(x.workout.painDuring) >= 4 || Number(x.recovery?.pain) >= 3 || x.recovery?.status === 'worse' || x.recovery?.plateSymptoms || x.entry.technique === 'poor');
@@ -171,14 +204,16 @@
     'd3s-hollow': { name: 'Hollow hold' },
     'd3s-knee': { name: 'Hanging knee raise regression' },
     'd5s-support': { name: 'Feet-assisted straight-bar top support' },
-    'd5s-rowline': { name: 'Chest-to-bar line band row' }
+    'd5s-dip': { name: 'Feet-assisted shallow straight-bar dip' },
+    'd5s-rowline': { name: 'Chest-to-bar line band row' },
+    'd5s-highpull': { name: 'Band-assisted high pull' }
   };
   const exerciseEquipment = {
     'd3e-scap-pull': ['pullUpBar', 'bands'], 'd3e-pullup-single': ['pullUpBar', 'bands'], 'd3e-row': ['dumbbellsKg', 'kettlebellsKg', 'bands'],
     'd3e-er': ['bands'], 'd2m-er': ['bands'], 'd1e-pushup': ['bodyweight'], 'd1m-scap': ['bodyweight'],
     'd2e-bss': ['dumbbellsKg', 'kettlebellsKg', 'bodyweight'], 'd2e-slrdl': ['dumbbellsKg', 'kettlebellsKg', 'bodyweight'],
     'd2e-calf': ['dumbbellsKg', 'kettlebellsKg', 'bodyweight'], 'd1m-deadbug': ['bodyweight'],
-    'd3s-hollow': ['bodyweight'], 'd3s-knee': ['pullUpBar', 'bodyweight'], 'd5s-support': ['pullUpBar', 'bodyweight'], 'd5s-rowline': ['bands'], cardio: ['rowingMachine', 'walking', 'running']
+    'd3s-hollow': ['bodyweight'], 'd3s-knee': ['pullUpBar', 'bodyweight'], 'd5s-support': ['pullUpBar', 'bodyweight'], 'd5s-dip': ['pullUpBar', 'bodyweight'], 'd5s-rowline': ['bands'], 'd5s-highpull': ['pullUpBar', 'bands'], cardio: ['rowingMachine', 'walking', 'running']
   };
   const equipmentSignature = health => JSON.stringify(normalizeEquipment(health.settings.equipment));
   const numericSets = entry => (entry?.sets || []).map(Number).filter(Number.isFinite).filter(n => n >= 0);
@@ -265,6 +300,8 @@
         return { from, to: target(`3 × ${nextReps} ${name} with ${available.label}${carry}; keep 3 RIR`, { targetSets: 3, targetReps: nextReps, ...available, loadLabel: available.label, variation: 'standard' }) };
       }
       if (currentKg && minReps < cap) return { from, to: target(`${sets} × ${Math.min(cap, minReps + increment)} ${name} with ${sameLoad}`, { targetSets: sets, targetReps: Math.min(cap, minReps + increment), loadKg: currentKg, loadLabel: sameLoad, variation: 'standard' }) };
+      if (prior.variation === 'tempo') return { from, to: target(`${sets} × ${Math.max(6, Math.min(10, minReps))} one-and-a-half ${name} with ${sameLoad}`, { targetSets: sets, targetReps: Math.max(6, Math.min(10, minReps)), loadKg: currentKg, loadLabel: sameLoad, variation: 'one-and-half' }) };
+      if (prior.variation === 'one-and-half') return { from, to: target(`${sets} × ${Math.max(8, Math.min(cap, minReps))} ${name} with ${sameLoad}, 2-sec pause in the hardest controlled position`, { targetSets: sets, targetReps: Math.max(8, Math.min(cap, minReps)), loadKg: currentKg, loadLabel: sameLoad, variation: 'paused' }) };
       return { from, to: target(`${sets} × ${minReps} ${name} with ${sameLoad}, 3-sec lowering + 1-sec pause`, { targetSets: sets, targetReps: minReps, loadKg: currentKg, loadLabel: sameLoad, variation: 'tempo' }) };
     }
 
@@ -319,6 +356,10 @@
       const seconds = state === 'REGRESS' ? Math.max(8, minReps - 5) : Math.min(30, minReps + 5); const harder = state === 'PROGRESS' && minReps >= 30;
       return { from, to: target(`${state === 'REGRESS' ? 2 : 3} × ${harder ? 15 : seconds}-sec feet-assisted straight-bar supports${harder ? ' with slightly less foot assistance' : ''}`, { targetSets: state === 'REGRESS' ? 2 : 3, targetReps: harder ? 15 : seconds, implement: 'pull-up bar with foot assistance', loadLabel: 'feet-assisted bodyweight', variation: harder ? 'reduced-assistance' : 'assisted-support' }) };
     }
+    if (id === 'd5s-dip') {
+      const next = state === 'REGRESS' ? Math.max(3, minReps - 1) : Math.min(8, minReps + 1); const range = state === 'PROGRESS' && minReps >= 6 ? 'a slightly deeper pain-free range' : 'the same shallow pain-free range';
+      return { from, to: target(`${state === 'REGRESS' ? 2 : sets} × ${next} feet-assisted straight-bar dips through ${range}; keep 3–4 RIR`, { targetSets: state === 'REGRESS' ? 2 : sets, targetReps: next, implement: 'pull-up bar with foot assistance', loadLabel: 'feet-assisted bodyweight', variation: minReps >= 6 ? 'slightly-deeper-range' : 'shallow-assisted' }) };
+    }
     if (id === 'd5s-rowline') {
       const band = bandFor({ load: actualLoad }, equipment); const bandIndex = equipment.bands.indexOf(band);
       if (!band) return { from, to: target(`${state === 'REGRESS' ? 2 : 3} × ${state === 'REGRESS' ? 8 : 10} prone W pulls`, { targetSets: state === 'REGRESS' ? 2 : 3, targetReps: state === 'REGRESS' ? 8 : 10, implement: 'bodyweight', loadLabel: 'bodyweight', variation: 'prone-w' }) };
@@ -326,13 +367,21 @@
       const next = state === 'REGRESS' ? Math.max(6, minReps - 2) : Math.min(12, minReps + 2); const tempo = state === 'PROGRESS' && minReps >= 12;
       return { from, to: target(`${state === 'REGRESS' ? 2 : sets} × ${tempo ? minReps : next} chest-to-bar line rows with ${band}${tempo ? ', 3-sec return' : ''}`, { targetSets: state === 'REGRESS' ? 2 : sets, targetReps: tempo ? minReps : next, implement: 'band', loadLabel: band, variation: tempo ? 'tempo' : 'chest-to-bar-line' }) };
     }
+    if (id === 'd5s-highpull') {
+      const band = bandFor({ load: actualLoad }, equipment, state === 'REGRESS');
+      if (!equipment.pullUpBar || !band) return { from, to: target('3 × 8 chest-to-bar line band rows with controlled tempo', { targetSets: 3, targetReps: 8, implement: 'band', loadLabel: band || 'bodyweight', variation: 'chest-to-bar-line' }) };
+      const next = state === 'REGRESS' ? Math.max(3, minReps - 1) : Math.min(6, minReps + 1);
+      return { from, to: target(`${state === 'REGRESS' ? 2 : 3} × ${next} band-assisted high pulls with ${band}; no kicking and keep 3 RIR`, { targetSets: state === 'REGRESS' ? 2 : 3, targetReps: next, implement: 'pull-up bar and band', loadLabel: band, variation: 'controlled-high-pull' }) };
+    }
     return { from, to: target(`${sets} × ${minReps} with ${sameLoad}`, { targetSets: sets, targetReps: minReps, loadKg: currentKg, loadLabel: sameLoad }) };
   }
   const rotationSlots = {
     'd3s-hollow': { day: 4, replaces: 'd1m-deadbug' },
     'd3s-knee': { day: 4, replaces: 'd1m-deadbug' },
     'd5s-support': { day: 4, replaces: 'd1e-pushup' },
-    'd5s-rowline': { day: 4, replaces: 'd3e-row' }
+    'd5s-dip': { day: 4, replaces: 'd1e-pushup' },
+    'd5s-rowline': { day: 4, replaces: 'd3e-row' },
+    'd5s-highpull': { day: 4, replaces: 'd3e-row' }
   };
 
   function allExerciseEvidence(health, through, ids) {
@@ -349,7 +398,7 @@
     let lastConcernIndex = -1;
     evidence.forEach((exposure, index) => { if (stageConcern(exposure)) lastConcernIndex = index; });
     const currentEvidence = evidence.slice(lastConcernIndex + 1);
-    const passing = currentEvidence.filter(exposure => exposureIsQualified(exposure, gate.shoulder)).filter(exposure => gate.test(exposure.entry, exposure, normalizeEquipment(health.settings.equipment)));
+    const passing = currentEvidence.filter(exposure => (!gate.shoulder || health.settings.upperBodyCleared) && exposureIsQualified(exposure, gate.shoulder)).filter(exposure => gate.test(exposure.entry, exposure, normalizeEquipment(health.settings.equipment)));
     const passingDates = [...new Map(passing.map(exposure => [exposure.key, exposure])).values()];
     const required = gate.required || 2;
     const achieved = passingDates.length >= required;
@@ -365,23 +414,25 @@
     const strict = entry => /bodyweight|unassisted|no assist|strict/.test(load(entry)) && !assisted(entry);
     const configs = [
       {
-        id: 'pull', title: 'Pulling', stages: ['Supported row', 'Assisted pull-up', 'Strict pull-up', 'Chest-to-bar preparation', 'Explosive pull', 'Muscle-up'],
+        id: 'pull', title: 'Pulling', stages: ['Supported row', 'Assisted pull-up', 'Strict pull-up', 'Chest-to-bar preparation', 'Controlled high pull', 'Muscle-up readiness'],
         gates: [
           { ids: ['d3e-row'], shoulder: true, target: '3 × 10 supported rows', test: entry => atLeast(entry, 3, 10) },
           { ids: ['d3e-pullup-single'], shoulder: true, target: `3 × 3 pull-ups with ${equipment.bands[0] || 'the lightest available band'} assistance`, test: entry => assisted(entry) && (!lightestBand || load(entry).includes(lightestBand) || /lightest/.test(load(entry))) && atLeast(entry, 3, 3) },
           { ids: ['d3e-pullup-single'], shoulder: true, target: '8 total strict bodyweight pull-ups across 3 sets', test: entry => strict(entry) && sets(entry).length >= 3 && sets(entry).reduce((sum, value) => sum + value, 0) >= 8 },
-          { ids: ['d5s-rowline'], shoulder: true, target: '3 × 10 chest-to-bar line rows', test: entry => atLeast(entry, 3, 10) }
+          { ids: ['d5s-rowline'], shoulder: true, target: '3 × 10 chest-to-bar line rows', test: entry => atLeast(entry, 3, 10) },
+          { ids: ['d5s-highpull'], shoulder: true, target: '3 × 5 controlled band-assisted high pulls', test: entry => atLeast(entry, 3, 5) }
         ],
-        planByLevel: { 3: 'd5s-rowline' }
+        planByLevel: { 3: 'd5s-rowline', 4: 'd5s-highpull' }
       },
       {
-        id: 'push', title: 'Pushing', stages: ['Incline push-up', 'Floor push-up', 'Straight-bar support', 'Pike push-up', 'Handstand push-up'],
+        id: 'push', title: 'Pushing', stages: ['Incline push-up', 'Floor push-up', 'Straight-bar support', 'Assisted shallow dip', 'Pain-free dip base'],
         gates: [
           { ids: ['d1e-pushup'], shoulder: true, target: '3 × 10 clean incline push-ups', test: entry => !/floor/.test(load(entry)) && atLeast(entry, 3, 10) },
           { ids: ['d1e-pushup'], shoulder: true, target: '3 × 8 floor push-ups', test: entry => /floor/.test(load(entry)) && atLeast(entry, 3, 8) },
-          { ids: ['d5s-support'], shoulder: true, target: '3 × 20-sec feet-assisted straight-bar supports', test: entry => atLeast(entry, 3, 20) }
+          { ids: ['d5s-support'], shoulder: true, target: '3 × 20-sec feet-assisted straight-bar supports', test: entry => atLeast(entry, 3, 20) },
+          { ids: ['d5s-dip'], shoulder: true, target: '2 × 6 shallow feet-assisted straight-bar dips', test: entry => atLeast(entry, 2, 6) }
         ],
-        planByLevel: { 2: 'd5s-support' }
+        planByLevel: { 2: 'd5s-support', 3: 'd5s-dip' }
       },
       {
         id: 'core', title: 'Core', stages: ['Dead bug', 'Hollow hold', 'Knee raise', 'Leg raise', 'Tuck L-sit', 'L-sit'],
@@ -422,7 +473,7 @@
     const pathways = Object.fromEntries(skillPathways(health, addDays(start, 6)).map(pathway => [pathway.id, pathway]));
     const evidenceFor = ids => ids.flatMap(id => exerciseEvidence(health, start, id, 2));
     const hasConcern = evidence => evidence.some(x => Number(x.workout.painDuring) >= 3 || Number(x.recovery?.pain) >= 3 || x.recovery?.status === 'worse' || x.recovery?.plateSymptoms || ['okay', 'poor'].includes(x.entry.technique) || (x.entry.rir !== '' && Number(x.entry.rir) < 2));
-    const qualified = (ids, shoulder = true) => { const evidence = evidenceFor(ids); return !hasConcern(evidence) && evidence.filter(x => exposureIsQualified(x, shoulder)).length >= 2; };
+    const qualified = (ids, shoulder = true) => { const evidence = evidenceFor(ids); return (!shoulder || health.settings.upperBodyCleared) && !hasConcern(evidence) && evidence.filter(x => exposureIsQualified(x, shoulder)).length >= 2; };
     const latestFrom = ids => {
       const latest = evidenceFor(ids).sort((a, b) => b.key.localeCompare(a.key))[0]; return latest ? setSummary(latest.entry) : 'Two-week readiness record';
     };
@@ -434,9 +485,14 @@
       const seconds = 20;
       items.push({ id: 'd3s-hollow', name: conservativePrescription['d3s-hollow'].name, state: 'PROGRESS', from: latestFrom(['d1m-deadbug']), to: `3 × ${seconds}-sec hollow holds with the easiest clean lever`, reason: 'Two clean target-level dead-bug sessions support replacing one slot with the next muscle-up-specific trunk variation.', target: target(`3 × ${seconds}-sec hollow holds with the easiest clean lever`, { targetSets: 3, targetReps: seconds, implement: 'bodyweight', loadLabel: 'bodyweight', variation: 'bent-knee-as-needed' }) });
     }
-    if (pathways.pull.planExerciseId === 'd5s-rowline' && equipment.bands.length && qualified(['d3e-pullup-single'])) {
+    if (pathways.pull.planExerciseId === 'd5s-highpull' && equipment.pullUpBar && equipment.bands.length && qualified(['d5s-rowline'])) {
+      const band = equipment.bands[0];
+      items.push({ id: 'd5s-highpull', name: conservativePrescription['d5s-highpull'].name, state: 'PROGRESS', from: latestFrom(['d5s-rowline']), to: `3 × 4 controlled band-assisted high pulls with ${band}; no kicking and keep 3 RIR`, reason: 'Two clean, symptom-stable chest-to-bar-line row sessions support replacing Friday rows with the next pulling-line drill; no muscle-up attempts are introduced.', target: target(`3 × 4 controlled band-assisted high pulls with ${band}; no kicking and keep 3 RIR`, { targetSets: 3, targetReps: 4, implement: 'pull-up bar and band', loadLabel: band, variation: 'controlled-high-pull' }) });
+    } else if (pathways.pull.planExerciseId === 'd5s-rowline' && equipment.bands.length && qualified(['d3e-pullup-single'])) {
       const band = equipment.bands[0];
       items.push({ id: 'd5s-rowline', name: conservativePrescription['d5s-rowline'].name, state: 'PROGRESS', from: latestFrom(['d3e-pullup-single']), to: `3 × 8 chest-to-bar line rows with ${band}; keep 3 RIR`, reason: 'Two clean target-level strict pull-up sessions support changing the Friday row angle toward the muscle-up pulling line; Monday rows remain unchanged.', target: target(`3 × 8 chest-to-bar line rows with ${band}; keep 3 RIR`, { targetSets: 3, targetReps: 8, implement: 'band', loadLabel: band, variation: 'chest-to-bar-line' }) });
+    } else if (pathways.push.planExerciseId === 'd5s-dip' && equipment.pullUpBar && qualified(['d5s-support'])) {
+      items.push({ id: 'd5s-dip', name: conservativePrescription['d5s-dip'].name, state: 'PROGRESS', from: latestFrom(['d5s-support']), to: '2 × 4 shallow feet-assisted straight-bar dips; keep 4 RIR', reason: 'Two clean, symptom-stable support sessions support replacing Friday push-ups with a shallow assisted dip preparation; depth and total pushing volume stay limited.', target: target('2 × 4 shallow feet-assisted straight-bar dips; keep 4 RIR', { targetSets: 2, targetReps: 4, implement: 'pull-up bar with foot assistance', loadLabel: 'feet-assisted bodyweight', variation: 'shallow-assisted' }) });
     } else if (pathways.push.planExerciseId === 'd5s-support' && equipment.pullUpBar && qualified(['d1e-pushup'])) {
       const seconds = 15;
       items.push({ id: 'd5s-support', name: conservativePrescription['d5s-support'].name, state: 'PROGRESS', from: latestFrom(['d1e-pushup']), to: `3 × ${seconds}-sec feet-assisted straight-bar top supports`, reason: 'Two clean target-level floor push-up sessions support replacing Friday push-ups with an assisted muscle-up finish position; weekly pushing volume does not increase.', target: target(`3 × ${seconds}-sec feet-assisted straight-bar top supports`, { targetSets: 3, targetReps: seconds, implement: 'pull-up bar with foot assistance', loadLabel: 'feet-assisted bodyweight', variation: 'assisted-support' }) });
@@ -484,9 +540,9 @@
       return {
         date: key, plan,
         workout: {
-          complete: Boolean(workout.complete), minutes: String(workout.minutes || ''), effort: String(workout.effort || ''),
+          complete: Boolean(workout.complete), status: String(workout.status || ''), movedTo: String(workout.movedTo || ''), minutes: String(workout.minutes || ''), effort: String(workout.effort || ''),
           painDuring: String(workout.painDuring || ''), painAfter: String(workout.painAfter || ''), painNext: String(workout.painNext || ''),
-          cardioMinutes: String(workout.cardioMinutes || ''), breathingSymptoms: String(workout.breathingSymptoms || ''), relieverUsed: Boolean(workout.relieverUsed), exercises
+          cardioMinutes: String(workout.cardioMinutes || ''), breathingSymptoms: String(workout.breathingSymptoms || ''), relieverUsed: usedReliever(workout), exercises
         },
         nextMorningRecovery: clone(recoveryForWorkout(health, key))
       };
@@ -495,7 +551,7 @@
   function longitudinalHistory(health, throughStart, completeWeek = true) {
     const throughDate = completeWeek ? addDays(weekStart(throughStart), 6) : throughStart; const fromDate = health.settings.programmeStart;
     const weeks = new Map(); const exerciseTrends = {}; const cardio = { sessions: 0, totalMinutes: 0, longestMinutes: 0, breathingConcerns: 0, relieverUses: 0 };
-    const safety = { painConcernSessions: 0, worseRecoveryChecks: 0, plateSymptomChecks: 0, completedRecoveryChecks: 0 };
+    const safety = { painConcernSessions: 0, worseRecoveryChecks: 0, plateSymptomChecks: 0, completedRecoveryChecks: 0 }; let skippedSessions = 0;
     let completedSessions = 0; let firstRecordedDate = null; let lastRecordedDate = null;
     for (const [key, day] of Object.entries(health.days).sort(([a], [b]) => a.localeCompare(b))) {
       if (key < fromDate || key > throughDate) continue;
@@ -505,6 +561,7 @@
       firstRecordedDate ||= key; lastRecordedDate = key;
       const start = weekStart(key); const week = weeks.get(start) || { weekStart: start, completedSessions: 0, exerciseExposures: 0, cardioMinutes: 0, maxPain: 0, breathingConcerns: 0, recoveryConcerns: 0 };
       if (workout.complete) { completedSessions++; week.completedSessions++; }
+      if (workout.status === 'skipped') skippedSessions++;
       const recovery = recoveryForWorkout(health, key); const pain = Math.max(Number(workout.painDuring) || 0, Number(workout.painAfter) || 0, Number(recovery?.pain) || 0);
       week.maxPain = Math.max(week.maxPain, pain);
       if (pain >= 3) safety.painConcernSessions++;
@@ -515,21 +572,21 @@
       if (cardioMinutes) {
         cardio.sessions++; cardio.totalMinutes += cardioMinutes; cardio.longestMinutes = Math.max(cardio.longestMinutes, cardioMinutes); week.cardioMinutes += cardioMinutes;
         if (['mild', 'moderate', 'stopped'].includes(workout.breathingSymptoms)) { cardio.breathingConcerns++; week.breathingConcerns++; }
-        if (workout.relieverUsed) cardio.relieverUses++;
+        if (usedReliever(workout)) cardio.relieverUses++;
       }
       for (const [id, entry] of Object.entries(exercises)) {
         const trend = exerciseTrends[id] || { exposures: 0, completedExposures: 0, qualifiedExposures: 0, firstDate: key, lastDate: key, bestSetReps: 0, bestTotalReps: 0, latestSets: [], latestLoad: '', latestRir: '', latestTechnique: '', painConcerns: 0, techniqueConcerns: 0 };
         const reps = Array.isArray(entry.sets) ? entry.sets.map(Number).filter(Number.isFinite) : [];
         trend.exposures++; trend.completedExposures += entry.done ? 1 : 0; trend.lastDate = key; trend.bestSetReps = Math.max(trend.bestSetReps, ...reps, 0); trend.bestTotalReps = Math.max(trend.bestTotalReps, reps.reduce((sum, value) => sum + value, 0));
         trend.latestSets = Array.isArray(entry.sets) ? entry.sets.map(value => String(value)).slice(0, 10) : []; trend.latestLoad = String(entry.load || '').slice(0, 100); trend.latestRir = entry.rir === undefined ? '' : String(entry.rir); trend.latestTechnique = String(entry.technique || '');
-        const exposure = { entry, workout, recovery }; if (exposureIsQualified(exposure, isShoulderLoading(id))) trend.qualifiedExposures++;
+        const exposure = { id, entry, workout, recovery, plan: planFor(health, key) }; if (exposureIsQualified(exposure, isShoulderLoading(id))) trend.qualifiedExposures++;
         if (!exposureIsSafe(exposure)) trend.painConcerns++;
         if (['okay', 'poor'].includes(entry.technique)) trend.techniqueConcerns++;
         exerciseTrends[id] = trend; week.exerciseExposures++;
       }
       weeks.set(start, week);
     }
-    return { fromDate, throughDate, firstRecordedDate, lastRecordedDate, completedSessions, weeksWithTraining: weeks.size, weeks: [...weeks.values()], exerciseTrends, cardio, safety };
+    return { fromDate, throughDate, firstRecordedDate, lastRecordedDate, completedSessions, skippedSessions, weeksWithTraining: weeks.size, weeks: [...weeks.values()], exerciseTrends, cardio, safety };
   }
   function sourceFingerprint(health, start, goals) {
     const value = JSON.stringify({ equipment: normalizeEquipment(health.settings.equipment), goals: normalizeGoals(goals), history: longitudinalHistory(health, start), previousWeek: boundedReviewDays(health, addDays(start, -7)), days: boundedReviewDays(health, start) });
@@ -545,6 +602,7 @@
       schemaVersion: 2, sourceWeekStart, nextWeekStart, sourceFingerprint: sourceFingerprint(health, sourceWeekStart, goals),
       ready: completedSessions >= 5 || today >= nextWeekStart, completedSessions,
       goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment), skillPathways: skillPathways(health, addDays(sourceWeekStart, 6)),
+      clinical: { upperBodyCleared: Boolean(health.settings.upperBodyCleared) },
       history: longitudinalHistory(health, sourceWeekStart),
       previousWeek: { sourceWeekStart: previousWeekStart, days: boundedReviewDays(health, previousWeekStart) }, days,
       safetyPolicy: {
@@ -592,6 +650,7 @@
     return {
       schemaVersion: 3, cadence: 'daily', sourceDate, targetDate, sourceFingerprint: dailyReviewFingerprint(health, sourceDate, goals, legacyLogs),
       ready: sourceDate <= today, sourceComplete: Boolean(sourceDay.workout?.complete), goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment),
+      clinical: { upperBodyCleared: Boolean(health.settings.upperBodyCleared) },
       history: longitudinalHistory(health, sourceDate, false), skillPathways: skillPathways(health, sourceDate), legacyHistory: legacyReviewContext(legacyLogs), recentDays: [...boundedReviewDays(health, addDays(sourceDate, -13)), ...boundedReviewDays(health, addDays(sourceDate, -6))],
       notes: reviewTextContext(health, sourceDate, goals), targetPlan: boundedReviewDays(health, targetDate)[0].plan,
       safetyPolicy: {
@@ -629,14 +688,52 @@
     }
     return item;
   }
+  function reviewedTargetUsesOwnedEquipment(health, item) {
+    if (!item.target || item.id === 'cardio' || item.id === 'week') return true;
+    const equipment = normalizeEquipment(health.settings.equipment); const implement = String(item.target.implement || '').toLowerCase(); const label = String(item.target.loadLabel || '').toLowerCase(); const loadKg = Number(item.target.loadKg) || 0;
+    if (implement.includes('band') && !equipment.bands.some(band => label.includes(band.toLowerCase()))) return false;
+    if (implement.includes('kettlebell') && loadKg && !equipment.kettlebellsKg.includes(loadKg)) return false;
+    if (implement === 'dumbbell' && loadKg && !equipment.dumbbellsKg.includes(loadKg)) return false;
+    if (implement.includes('dumbbells') && loadKg) {
+      const availableTotals = equipment.dumbbellsKg.flatMap((first, index) => equipment.dumbbellsKg.slice(index + 1).map(second => first + second));
+      if (!availableTotals.includes(loadKg)) return false;
+    }
+    if (implement.includes('pull-up bar') && !implement.includes('or bodyweight') && !equipment.pullUpBar) return false;
+    if (item.id === 'd5s-rowline' && !equipment.bands.length) return false;
+    return true;
+  }
+  function validateReviewedItems(health, snapshot, items, targetPlan) {
+    const plan = targetPlan || snapshot?.targetPlan; const pathways = Object.fromEntries((snapshot?.skillPathways || []).map(pathway => [pathway.planExerciseId, pathway]));
+    for (const item of items) {
+      if (!reviewedTargetUsesOwnedEquipment(health, item)) throw new Error(`Reviewed plan requires unavailable equipment for ${item.name}`);
+      if (item.id === 'cardio') {
+        if (item.state === 'PROGRESS' && plan?.kind === 'cardio' && item.minutes > Math.ceil(Number(plan.minutes || 0) * 1.1)) throw new Error('Reviewed cardio progression exceeds ten percent');
+        continue;
+      }
+      if (item.id === 'week') continue;
+      const slot = rotationSlots[item.id]; const inPlan = plan?.ids?.includes(item.id); const replacesPlanItem = slot && plan?.ids?.includes(slot.replaces);
+      if (plan && !inPlan && !replacesPlanItem) throw new Error(`Reviewed exercise ${item.id} does not belong in the target plan`);
+      if (!inPlan && replacesPlanItem) {
+        const pathway = pathways[item.id];
+        if (!pathway || pathway.status === 'HOLD') throw new Error(`Reviewed skill ${item.id} has not been earned`);
+      }
+      if (item.state === 'PROGRESS' && isShoulderLoading(item.id)) {
+        if (!health.settings.upperBodyCleared) throw new Error('Shoulder-loading progression requires recorded clinical clearance');
+        const latest = allExerciseEvidence(health, snapshot?.sourceDate || addDays(snapshot?.sourceWeekStart, 6), [item.id]).at(-1);
+        if (!latest || !exposureIsQualified(latest, true)) throw new Error(`Shoulder-loading progression lacks qualified recovery evidence for ${item.name}`);
+      }
+    }
+    return items;
+  }
   function storeReviewedDraft(health, value, goals) {
     if (!isObject(value) || !validDate(value.sourceWeekStart) || !validDate(value.nextWeekStart) || value.nextWeekStart !== addDays(value.sourceWeekStart, 7)) throw new Error('Invalid reviewed week');
     const snapshot = weeklyReviewSnapshot(health, value.sourceWeekStart, dateKey(), goals);
     if (!snapshot.ready || value.sourceFingerprint !== snapshot.sourceFingerprint) throw new Error('Workout data changed; request a fresh weekly review');
     if (!Array.isArray(value.items) || !value.items.length || value.items.length > 30) throw new Error('Invalid reviewed plan');
+    const normalizedItems = value.items.map(normalizeReviewedItem); validateReviewedItems(health, snapshot, normalizedItems);
     const draft = {
       sourceWeekStart: value.sourceWeekStart, nextWeekStart: value.nextWeekStart, sourceFingerprint: value.sourceFingerprint,
-      summary: String(value.summary || '').trim().slice(0, 1000), items: value.items.map(normalizeReviewedItem),
+      summary: String(value.summary || '').trim().slice(0, 1000), items: normalizedItems,
       reviewedAt: String(value.reviewedAt || new Date().toISOString()), reviewedBy: 'codex', status: 'draft'
     };
     health.reviewDrafts ||= {}; health.reviewDrafts[draft.nextWeekStart] = draft; return draft;
@@ -654,9 +751,10 @@
     const snapshot = dailyReviewSnapshot(health, value.sourceDate, dateKey(), goals, legacyLogs);
     if (!snapshot.ready || value.sourceFingerprint !== snapshot.sourceFingerprint) throw new Error('Training history or notes changed; request a fresh daily review');
     if (!Array.isArray(value.items) || !value.items.length || value.items.length > 30) throw new Error('Invalid reviewed plan');
+    const normalizedItems = value.items.map(normalizeReviewedItem); validateReviewedItems(health, snapshot, normalizedItems, snapshot.targetPlan);
     const draft = {
       cadence: 'daily', sourceDate: value.sourceDate, targetDate: value.targetDate, sourceFingerprint: value.sourceFingerprint,
-      summary: String(value.summary || '').trim().slice(0, 1000), items: value.items.map(normalizeReviewedItem),
+      summary: String(value.summary || '').trim().slice(0, 1000), items: normalizedItems,
       reviewedAt: String(value.reviewedAt || new Date().toISOString()), reviewedBy: 'codex', status: 'draft'
     };
     health.reviewDrafts ||= {}; health.reviewDrafts[draft.targetDate] = draft; return draft;
@@ -678,11 +776,24 @@
       if (!base.ids.includes(item.id) && slot) { const replaceAt = base.ids.indexOf(slot.replaces); if (replaceAt >= 0) { base.ids.splice(replaceAt, 1, item.id); delete overrides[slot.replaces]; } }
       if (base.ids.includes(item.id)) { const config = conservativePrescription[item.id]; overrides[item.id] = { ...(config?.name ? { name: config.name } : {}), ...(item.target || {}), prescription: item.to }; }
     }
-    base.exerciseOverrides = Object.fromEntries(base.ids.filter(id => overrides[id]).map(id => [id, overrides[id]])); day.plan = base;
+    base.exerciseOverrides = Object.fromEntries(base.ids.filter(id => overrides[id]).map(id => [id, overrides[id]])); day.plan = base; day.planSource = 'daily-review';
     const review = { ...draft, status: 'active', activatedAt: new Date().toISOString(), rulesVersion: RULES_VERSION, targetPlan: clone(base) };
     health.dailyReviews ||= {}; health.dailyReviews[draft.sourceDate] = review;
     health.reviewDrafts[targetDate] = { ...draft, status: 'approved', approvedAt: review.activatedAt };
     return review;
+  }
+  function revalidateDailyPlanForRecovery(health, targetDate) {
+    const review = Object.values(health.dailyReviews || {}).find(value => value?.cadence === 'daily' && value.targetDate === targetDate && ['active', 'safety-adjusted'].includes(value.status));
+    const day = health.days[targetDate]; if (!review || !day?.plan || workoutStarted(day)) return null;
+    const recovery = recoveryForWorkout(health, review.sourceDate); const current = day.recovery || {};
+    const concern = Number(recovery?.pain) >= 3 || recovery?.status === 'worse' || recovery?.plateSymptoms || current.redFlag || current.worse || (current.shoulder !== '' && current.shoulder !== undefined && Number(current.shoulder) > 2);
+    if (!concern) return review;
+    const removed = day.plan.ids.filter(isShoulderLoading); if (!removed.length) return review;
+    day.plan.ids = day.plan.ids.filter(id => !isShoulderLoading(id));
+    day.plan.exerciseOverrides = Object.fromEntries(Object.entries(day.plan.exerciseOverrides || {}).filter(([id]) => !removed.includes(id)));
+    day.plan.safetyNotice = 'Shoulder-loading work was removed after the latest recovery check. Use recovery or lower-body work only and review persistent or focal symptoms with your clinician.';
+    const adjusted = { ...review, status: 'safety-adjusted', safetyAdjustedAt: new Date().toISOString(), safetyReason: 'Latest recovery evidence crossed the shoulder-loading guardrail.', targetPlan: clone(day.plan) };
+    health.dailyReviews[review.sourceDate] = adjusted; return adjusted;
   }
   function weekHasWorkoutActivity(health, start) {
     return Array.from({ length: 7 }, (_, i) => health.days[addDays(start, i)]?.workout)
@@ -701,11 +812,12 @@
         if (replaceAt >= 0) base.ids.splice(replaceAt, 1, item.id); else if (!base.ids.includes(item.id)) base.ids.push(item.id);
       }
       base.exerciseOverrides = Object.fromEntries(base.ids.filter(id => overrides[id]).map(id => [id, overrides[id]]));
-      if (i === 3) base.minutes = review.items.find(item => item.id === 'cardio')?.minutes || (review.baseline ? 32 : base.minutes);
+      if (i === 3 || i === 5) base.minutes = review.items.find(item => item.id === 'cardio')?.minutes || (review.baseline && i === 3 ? 32 : base.minutes);
       days[i] = base;
       const key = addDays(review.nextWeekStart, i); const day = dayRecord(health, key);
-      const started = day.workout?.updatedAt || day.workout?.complete || Object.keys(day.workout?.exercises || {}).length;
-      if (started) {
+      const started = workoutStarted(day); const protectedDailyPlan = day.planSource === 'daily-review' && Object.values(health.dailyReviews || {}).some(value => value?.targetDate === key && ['active', 'safety-adjusted'].includes(value.status));
+      const protectedScheduleSwap = day.planSource === 'schedule-swap' && day.scheduleChange?.type === 'swap';
+      if (started || protectedDailyPlan || protectedScheduleSwap) {
         if (!day.plan?.title) day.plan = clone(previousGenerated?.days?.[i] || plans[i]);
       } else {
         day.plan = clone(base);
@@ -722,8 +834,6 @@
     const sessions = sessionsInWeek(health, sourceWeekStart);
     const normalizedGoals = normalizeGoals(goals); const fingerprint = sourceFingerprint(health, sourceWeekStart, normalizedGoals); const signature = equipmentSignature(health);
     const existing = health.generatedWeeks[nextWeekStart]; const existingReview = health.weeklyReviews[sourceWeekStart] || null;
-    const followingWeekStarted = weekHasWorkoutActivity(health, nextWeekStart);
-    if (existing?.rulesVersion === RULES_VERSION && followingWeekStarted && existing.equipmentSignature === signature) return existingReview;
     if (existing?.rulesVersion === RULES_VERSION && existing.sourceFingerprint === fingerprint && existing.equipmentSignature === signature) return existingReview;
     if (sessions.length < 5 && dateKey() < nextWeekStart) return existingReview;
     const ids = [...new Set(sessions.flatMap(([, d]) => Object.keys(d.workout.exercises || {})))].filter(id => conservativePrescription[id]);
@@ -732,17 +842,18 @@
     const cardio = sessions.filter(([, d]) => Number(d.workout.cardioMinutes) > 0);
     if (cardio.length) {
       const easy = cardio.filter(([key]) => weekday(key) === 3); const basis = easy.length ? easy : cardio;
-      const maxMinutes = Math.max(...basis.map(([, d]) => Number(d.workout.cardioMinutes)));
+      const rawMaxMinutes = Math.max(...basis.map(([, d]) => Number(d.workout.cardioMinutes))); const maxMinutes = Math.min(90, rawMaxMinutes);
       const severeSymptoms = cardio.some(([, d]) => ['moderate', 'stopped'].includes(d.workout.breathingSymptoms));
       const mildOrMissing = cardio.some(([, d]) => !d.workout.breathingSymptoms || d.workout.breathingSymptoms === 'mild');
+      const relieverConcern = cardio.some(([, d]) => usedReliever(d.workout)); const durationConcern = rawMaxMinutes > 90;
       const symptomFlare = cardio.some(([key, d]) => Number(d.workout.painDuring) >= 4 || Number(recoveryForWorkout(health, key)?.pain) >= 3 || recoveryForWorkout(health, key)?.status === 'worse');
       const highEffort = cardio.some(([, d]) => Number(d.workout.effort) >= 9);
-      const state = severeSymptoms || symptomFlare ? 'REGRESS' : mildOrMissing || highEffort ? 'HOLD' : 'PROGRESS';
+      const state = severeSymptoms || symptomFlare || durationConcern ? 'REGRESS' : mildOrMissing || relieverConcern || highEffort ? 'HOLD' : 'PROGRESS';
       const minutes = state === 'PROGRESS' ? Math.max(maxMinutes, Math.floor(maxMinutes * 1.1)) : state === 'REGRESS' ? Math.max(10, Math.floor(maxMinutes * 0.8)) : maxMinutes;
       const runningGoal = Number(normalizedGoals.runMinutes) > 0 || normalizedGoals.checklist.run2 || normalizedGoals.checklist.runinterval;
       const mode = state === 'REGRESS' ? 'brisk walk' : runningGoal ? 'easy run / walk' : normalizeEquipment(health.settings.equipment).rowingMachine ? 'rowing machine' : 'brisk walk';
       const to = state === 'REGRESS' ? `${minutes} min easy ${mode} after a gradual warm-up; follow the asthma action plan` : state === 'HOLD' ? `Repeat ${maxMinutes} min on the ${mode} at conversational effort after a gradual warm-up` : `${minutes} min on the ${mode} at conversational effort after a gradual warm-up (≤10% increase)`;
-      const reason = severeSymptoms ? 'Moderate symptoms or an exercise stop were recorded.' : symptomFlare ? 'Shoulder recovery crossed the conservative limit.' : mildOrMissing ? 'Breathing was mild or not recorded, so duration is held.' : highEffort ? 'Effort was too high for an automatic aerobic progression.' : 'Breathing was symptom-free, effort was controlled and shoulder recovery stayed within limits.';
+      const reason = severeSymptoms ? 'Moderate symptoms or an exercise stop were recorded.' : symptomFlare ? 'Shoulder recovery crossed the conservative limit.' : durationConcern ? 'A recorded duration exceeded the automatic-planning limit and needs manual confirmation.' : relieverConcern ? 'Reliever use was recorded, so duration is held pending an asthma-safe review.' : mildOrMissing ? 'Breathing was mild or not recorded, so duration is held.' : highEffort ? 'Effort was too high for an automatic aerobic progression.' : 'Breathing was symptom-free, effort was controlled and shoulder recovery stayed within limits.';
       items.push({ id: 'cardio', name: 'Easy cardio', state, from: `${maxMinutes} min recorded`, to, reason, minutes });
     }
     if (!items.length) items.push({ id: 'week', name: 'Programme', state: 'HOLD', from: 'No qualifying exercise records', to: 'Repeat the current schedule', reason: 'There was not enough exercise-level data for a safe change.' });
@@ -782,6 +893,6 @@
     for (let i = 0; i < days; i++) { const key = addDays(from, i); for (const e of timeline(health, key)) { const start = new Date(`${key}T${e.time}:00`); const end = new Date(start.getTime() + Math.max(5, e.minutes) * 60000); const local = d => `${dateKey(d).replaceAll('-', '')}T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00`; lines.push('BEGIN:VEVENT', `UID:${key}-${e.id.replace(':', '')}@movestrong.local`, `DTSTAMP:${stamp}`, `DTSTART:${local(start)}`, `DTEND:${local(end)}`, `SUMMARY:${e.title}`, 'DESCRIPTION:Personal schedule. Adjust to your agreed health and training limits.'); if (['movement', 'sauna', 'checkin'].includes(e.kind)) lines.push('BEGIN:VALARM', 'TRIGGER:PT0S', 'ACTION:DISPLAY', `DESCRIPTION:${e.title}`, 'END:VALARM'); lines.push('END:VEVENT'); } }
     lines.push('END:VCALENDAR'); return lines.join('\r\n') + '\r\n';
   }
-  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, normalizeGoals, mergeHealth, mergeCloud, dayRecord, plans, planFor, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, longitudinalHistory, skillPathways, weeklyReviewSnapshot, dailyReviewSnapshot, storeReviewedDraft, approveReviewedDraft, storeDailyReviewedPlan, activateDailyReviewedPlan, isShoulderLoading, exerciseEquipment };
+  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, normalizeGoals, mergeHealth, mergeCloud, dayRecord, plans, planFor, setWorkoutStatus, shiftPlannedSession, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, longitudinalHistory, skillPathways, weeklyReviewSnapshot, dailyReviewSnapshot, storeReviewedDraft, approveReviewedDraft, storeDailyReviewedPlan, activateDailyReviewedPlan, revalidateDailyPlanForRecovery, isShoulderLoading, exerciseEquipment };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.HealthModel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

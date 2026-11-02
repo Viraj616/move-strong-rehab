@@ -41,7 +41,7 @@ function mcpResponse(data, status = 200, extraHeaders = {}) {
 }
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const FINGERPRINT = /^v1-[a-f0-9]{8}-[a-f0-9]{8}-\d{1,8}$/;
-const REVIEW_IDS = new Set(['d3e-scap-pull','d3e-pullup-single','d3e-row','d3e-er','d2m-er','d1e-pushup','d1m-scap','d2e-bss','d2e-slrdl','d2e-calf','d1m-deadbug','d3s-hollow','d3s-knee','d5s-support','d5s-rowline','cardio','week']);
+const REVIEW_IDS = new Set(['d3e-scap-pull','d3e-pullup-single','d3e-row','d3e-er','d2m-er','d1e-pushup','d1m-scap','d2e-bss','d2e-slrdl','d2e-calf','d1m-deadbug','d3s-hollow','d3s-knee','d5s-support','d5s-dip','d5s-rowline','d5s-highpull','cardio','week']);
 const cleanText = (value, max = 240) => String(value || '').trim().slice(0, max);
 const plusDays = (value, days) => {
   if (!DATE.test(value || '')) throw Error('Invalid week date');
@@ -73,7 +73,7 @@ function validateSnapshot(value) {
         exercises[id] = { done: Boolean(entry.done), sets: Array.isArray(entry.sets) ? entry.sets.map(v => cleanText(v, 12)).slice(0, 10) : [], load: cleanText(entry.load, 100), rir: cleanText(entry.rir, 8), technique: cleanText(entry.technique, 20) };
       }
       const recovery = day.nextMorningRecovery && typeof day.nextMorningRecovery === 'object' ? { workoutDate: cleanText(day.nextMorningRecovery.workoutDate, 10), pain: cleanText(day.nextMorningRecovery.pain, 8), status: cleanText(day.nextMorningRecovery.status, 20), plateSymptoms: Boolean(day.nextMorningRecovery.plateSymptoms), complete: Boolean(day.nextMorningRecovery.complete) } : null;
-      return { date: day.date, plan: sanitizePlan(day.plan), workout: { complete: Boolean(workout.complete), minutes: cleanText(workout.minutes, 8), effort: cleanText(workout.effort, 8), painDuring: cleanText(workout.painDuring, 8), painAfter: cleanText(workout.painAfter, 8), painNext: cleanText(workout.painNext, 8), cardioMinutes: cleanText(workout.cardioMinutes, 8), breathingSymptoms: cleanText(workout.breathingSymptoms, 40), relieverUsed: Boolean(workout.relieverUsed), exercises }, nextMorningRecovery: recovery };
+      return { date: day.date, plan: sanitizePlan(day.plan), workout: { complete: Boolean(workout.complete), status: ['completed','skipped'].includes(workout.status) ? workout.status : '', movedTo: DATE.test(workout.movedTo || '') ? workout.movedTo : '', minutes: cleanText(workout.minutes, 8), effort: cleanText(workout.effort, 8), painDuring: cleanText(workout.painDuring, 8), painAfter: cleanText(workout.painAfter, 8), painNext: cleanText(workout.painNext, 8), cardioMinutes: cleanText(workout.cardioMinutes, 8), breathingSymptoms: cleanText(workout.breathingSymptoms, 40), relieverUsed: workout.relieverUsed === true || workout.relieverUsed === 'yes', exercises }, nextMorningRecovery: recovery };
     });
   };
   const days = daily ? sanitizeDays(value.recentDays, plusDays(sourceDate, -13), 14) : sanitizeDays(value.days, sourceDate, 7);
@@ -104,7 +104,7 @@ function validateSnapshot(value) {
   const history = {
     fromDate: DATE.test(rawHistory.fromDate || '') ? rawHistory.fromDate : sourceDate, throughDate: DATE.test(rawHistory.throughDate || '') ? rawHistory.throughDate : sourceDate,
     firstRecordedDate: DATE.test(rawHistory.firstRecordedDate || '') ? rawHistory.firstRecordedDate : null, lastRecordedDate: DATE.test(rawHistory.lastRecordedDate || '') ? rawHistory.lastRecordedDate : null,
-    completedSessions: boundedCount(rawHistory.completedSessions), weeksWithTraining: boundedCount(rawHistory.weeksWithTraining, 600), weeks, exerciseTrends,
+    completedSessions: boundedCount(rawHistory.completedSessions), skippedSessions: boundedCount(rawHistory.skippedSessions), weeksWithTraining: boundedCount(rawHistory.weeksWithTraining, 600), weeks, exerciseTrends,
     cardio: { sessions: boundedCount(rawHistory.cardio?.sessions), totalMinutes: boundedCount(rawHistory.cardio?.totalMinutes, 1000000), longestMinutes: boundedCount(rawHistory.cardio?.longestMinutes, 10000), breathingConcerns: boundedCount(rawHistory.cardio?.breathingConcerns), relieverUses: boundedCount(rawHistory.cardio?.relieverUses) },
     safety: { painConcernSessions: boundedCount(rawHistory.safety?.painConcernSessions), worseRecoveryChecks: boundedCount(rawHistory.safety?.worseRecoveryChecks), plateSymptomChecks: boundedCount(rawHistory.safety?.plateSymptomChecks), completedRecoveryChecks: boundedCount(rawHistory.safety?.completedRecoveryChecks) }
   };
@@ -124,10 +124,10 @@ function validateSnapshot(value) {
       return { key: cleanText(log?.key, 80), complete: Boolean(log?.complete), updatedAt: cleanText(log?.updatedAt, 40), painDuring: cleanText(log?.painDuring, 8), painAfter: cleanText(log?.painAfter, 8), painNext: cleanText(log?.painNext, 8), notes: cleanText(log?.notes, 1000), exercises };
     }).filter(log => log.key) : [];
     const ready = sourceDate <= new Date().toISOString().slice(0, 10);
-    return { schemaVersion: 3, cadence: 'daily', sourceDate, targetDate, sourceFingerprint: value.sourceFingerprint, ready, sourceComplete: Boolean(value.sourceComplete), goals, equipment: cleanEquipment, history, skillPathways, legacyHistory, recentDays: days, notes, targetPlan: sanitizePlan(value.targetPlan) };
+    return { schemaVersion: 3, cadence: 'daily', sourceDate, targetDate, sourceFingerprint: value.sourceFingerprint, ready, sourceComplete: Boolean(value.sourceComplete), goals, equipment: cleanEquipment, clinical: { upperBodyCleared: Boolean(value.clinical?.upperBodyCleared) }, history, skillPathways, legacyHistory, recentDays: days, notes, targetPlan: sanitizePlan(value.targetPlan) };
   }
   const completedSessions = days.filter(day => day.workout.complete).length; const ready = completedSessions >= 5 || new Date().toISOString().slice(0, 10) >= targetDate;
-  return { schemaVersion: 2, sourceWeekStart: sourceDate, nextWeekStart: targetDate, sourceFingerprint: value.sourceFingerprint, ready, completedSessions, goals, equipment: cleanEquipment, history, skillPathways, previousWeek, days };
+  return { schemaVersion: 2, sourceWeekStart: sourceDate, nextWeekStart: targetDate, sourceFingerprint: value.sourceFingerprint, ready, completedSessions, goals, equipment: cleanEquipment, clinical: { upperBodyCleared: Boolean(value.clinical?.upperBodyCleared) }, history, skillPathways, previousWeek, days };
 }
 function validateDraft(value) {
   const daily = value?.cadence === 'daily' || value?.sourceDate; const sourceDate = daily ? value?.sourceDate : value?.sourceWeekStart; const targetDate = daily ? value?.targetDate : value?.nextWeekStart;
@@ -150,6 +150,35 @@ function validateDraft(value) {
     ? { cadence: 'daily', sourceDate, targetDate, sourceFingerprint: value.sourceFingerprint, summary: cleanText(value.summary, 1000), items, reviewedAt: new Date().toISOString(), reviewedBy: 'codex', status: 'draft' }
     : { sourceWeekStart: sourceDate, nextWeekStart: targetDate, sourceFingerprint: value.sourceFingerprint, summary: cleanText(value.summary, 1000), items, reviewedAt: new Date().toISOString(), reviewedBy: 'codex', status: 'draft' };
 }
+function validateDraftSafety(draft, snapshot) {
+  const shoulder = id => /pull|row|push|scap|dip|highpull|(^|-)er$|d3s-knee|d5s-support/.test(id) && !/deadbug/.test(id);
+  const rotations = { 'd3s-hollow': 'd1m-deadbug', 'd3s-knee': 'd1m-deadbug', 'd5s-support': 'd1e-pushup', 'd5s-dip': 'd1e-pushup', 'd5s-rowline': 'd3e-row', 'd5s-highpull': 'd3e-row' };
+  const earned = new Map((snapshot.skillPathways || []).filter(pathway => pathway.planExerciseId).map(pathway => [pathway.planExerciseId, pathway]));
+  const dumbbells = (snapshot.equipment?.dumbbellsKg || []).map(Number); const kettlebells = new Set((snapshot.equipment?.kettlebellsKg || []).map(Number));
+  const dumbbellSingles = new Set(dumbbells); const dumbbellPairTotals = new Set(dumbbells.flatMap((first, index) => dumbbells.slice(index + 1).map(second => first + second)));
+  for (const item of draft.items) {
+    if (item.id === 'cardio') {
+      if (item.state === 'PROGRESS' && snapshot.targetPlan?.kind === 'cardio' && item.minutes > Math.ceil(Number(snapshot.targetPlan.minutes || 0) * 1.1)) throw Error('Cardio progression exceeds ten percent');
+      continue;
+    }
+    if (item.id === 'week') continue;
+    const inPlan = snapshot.targetPlan?.ids?.includes(item.id); const replacement = rotations[item.id];
+    if (snapshot.targetPlan && !inPlan && !(replacement && snapshot.targetPlan.ids.includes(replacement))) throw Error('Reviewed exercise does not belong in tomorrow’s plan');
+    if (!inPlan && replacement) { const pathway = earned.get(item.id); if (!pathway || pathway.status === 'HOLD') throw Error('Reviewed skill has not been earned'); }
+    const target = item.target || {}; const implement = String(target.implement || '').toLowerCase(); const label = String(target.loadLabel || '').toLowerCase(); const loadKg = Number(target.loadKg) || 0;
+    if (implement.includes('band') && !(snapshot.equipment?.bands || []).some(band => label.includes(String(band).toLowerCase()))) throw Error('Reviewed plan uses an unavailable band');
+    if (implement.includes('kettlebell') && loadKg && !kettlebells.has(loadKg)) throw Error('Reviewed plan uses an unavailable load');
+    if (implement === 'dumbbell' && loadKg && !dumbbellSingles.has(loadKg)) throw Error('Reviewed plan uses an unavailable load');
+    if (implement.includes('dumbbells') && loadKg && !dumbbellPairTotals.has(loadKg)) throw Error('Reviewed plan uses an unavailable load');
+    if (implement.includes('pull-up bar') && !implement.includes('or bodyweight') && !snapshot.equipment?.pullUpBar) throw Error('Reviewed plan requires a pull-up bar');
+    if (item.state === 'PROGRESS' && shoulder(item.id)) {
+      if (!snapshot.clinical?.upperBodyCleared) throw Error('Shoulder-loading progression requires clinical clearance');
+      const recent = [...(snapshot.recentDays || snapshot.days || [])].reverse().find(day => day.workout?.exercises?.[item.id]); const entry = recent?.workout?.exercises?.[item.id]; const recovery = recent?.nextMorningRecovery;
+      if (!entry?.done || entry.technique !== 'clean' || Number(entry.rir) < 2 || Number(entry.rir) > 4 || Number(recent.workout.effort || 0) >= 9 || Number(recent.workout.painDuring || 0) > 2 || !recovery?.complete || Number(recovery.pain || 0) > 2 || recovery.status === 'worse' || recovery.plateSymptoms) throw Error('Shoulder-loading progression lacks qualified recovery evidence');
+    }
+  }
+  return draft;
+}
 async function latestSnapshot(env, sourceWeekStart) {
   const query = sourceWeekStart ? 'SELECT snapshot FROM weekly_snapshots WHERE source_week_start=? ORDER BY updated_at DESC LIMIT 1' : 'SELECT snapshot FROM weekly_snapshots ORDER BY updated_at DESC LIMIT 1';
   const row = sourceWeekStart ? await env.DB.prepare(query).bind(sourceWeekStart).first() : await env.DB.prepare(query).first();
@@ -171,6 +200,7 @@ async function callReviewTool(env, name, args = {}) {
   if (name === 'save_next_day_plan') {
     const draft = validateDraft({ ...args, cadence: 'daily' }); const snapshot = await latestSnapshot(env, draft.sourceDate);
     if (!snapshot?.ready || snapshot.cadence !== 'daily' || snapshot.sourceFingerprint !== draft.sourceFingerprint || snapshot.targetDate !== draft.targetDate) throw Error('Training data or notes changed; fetch the day again');
+    validateDraftSafety(draft, snapshot);
     const existing = await env.DB.prepare('SELECT created_at FROM review_drafts WHERE next_week_start=?').bind(draft.targetDate).first(); const now = Date.now();
     await env.DB.prepare("INSERT INTO review_drafts(next_week_start,source_week_start,source_fingerprint,draft,status,created_at,updated_at) VALUES(?,?,?,?, 'draft',?,?) ON CONFLICT(next_week_start) DO UPDATE SET source_week_start=excluded.source_week_start,source_fingerprint=excluded.source_fingerprint,draft=excluded.draft,status='draft',updated_at=excluded.updated_at").bind(draft.targetDate, draft.sourceDate, draft.sourceFingerprint, JSON.stringify(draft), existing?.created_at || now, now).run();
     return toolResult({ saved: true, status: 'draft', targetDate: draft.targetDate, message: 'Tomorrow’s reviewed plan is ready for automatic fingerprint-validated activation.' });
@@ -185,6 +215,7 @@ async function callReviewTool(env, name, args = {}) {
   if (name === 'save_next_week_draft') {
     const draft = validateDraft(args); const snapshot = await latestSnapshot(env, draft.sourceWeekStart);
     if (!snapshot?.ready || snapshot.sourceFingerprint !== draft.sourceFingerprint || snapshot.nextWeekStart !== draft.nextWeekStart) throw Error('Workout data changed or the week is not ready; fetch it again');
+    validateDraftSafety(draft, snapshot);
     const existing = await env.DB.prepare('SELECT created_at FROM review_drafts WHERE next_week_start=?').bind(draft.nextWeekStart).first(); const now = Date.now();
     await env.DB.prepare("INSERT INTO review_drafts(next_week_start,source_week_start,source_fingerprint,draft,status,created_at,updated_at) VALUES(?,?,?,?, 'draft',?,?) ON CONFLICT(next_week_start) DO UPDATE SET source_week_start=excluded.source_week_start,source_fingerprint=excluded.source_fingerprint,draft=excluded.draft,status='draft',updated_at=excluded.updated_at").bind(draft.nextWeekStart, draft.sourceWeekStart, draft.sourceFingerprint, JSON.stringify(draft), existing?.created_at || now, now).run();
     return toolResult({ saved: true, status: 'draft', nextWeekStart: draft.nextWeekStart, message: 'Reviewed plan saved. Move Strong will validate and activate it automatically on the next device sync.' });
