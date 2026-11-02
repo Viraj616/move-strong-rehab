@@ -29,9 +29,8 @@ const assert = require('node:assert/strict');
     await page.locator('[data-route="train"]').click();
     await page.locator('#os-date').fill('2026-09-28'); await page.locator('#os-date').dispatchEvent('change');
     await page.locator('[data-route="progress"]').click();
-    await page.getByText('First adaptive week', { exact: true }).waitFor();
-    assert.equal(await page.locator('.os-state.progress').count() > 0, true);
-    assert.equal(await page.locator('.os-state.hold').count() > 0, true);
+    await page.getByText('Skill pathways', { exact: true }).waitFor();
+    assert.equal(await page.locator('.os-milestone').count() >= 4, true);
     await page.screenshot({ path: 'artifacts/adaptive-review.png', fullPage: true });
 
     await page.locator('[data-route="train"]').click();

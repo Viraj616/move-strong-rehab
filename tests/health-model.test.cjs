@@ -374,7 +374,7 @@ test('stale v1 generated weeks refresh before the following week is started', ()
   M.ensureGeneratedWeeks(data, '2026-10-12');
   const after = M.planFor(data, '2026-10-12');
   assert.ok(after.exerciseOverrides['d3e-row']);
-  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 7);
+  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 8);
 });
 
 test('started days are preserved while later days of a refreshed week can update', () => {
@@ -396,6 +396,56 @@ test('started days are preserved while later days of a refreshed week can update
   M.ensureGeneratedWeeks(data, '2026-10-12');
   assert.equal(M.planFor(data, '2026-10-12').exerciseOverrides['d3e-row'].prescription, 'started-plan');
   assert.ok(data.generatedWeeks['2026-10-12'].days[4].exerciseOverrides['d3e-row']);
+});
+
+test('exercise completion does not qualify work below the machine-readable target', () => {
+  const data = M.defaults(); const day = M.dayRecord(data, '2026-10-05');
+  day.plan = { ...M.plans[0], exerciseOverrides: { 'd3e-row': { targetSets: 3, targetReps: 12, prescription: '3 × 12' } } };
+  day.workout = { complete: true, painDuring: '1', effort: '6', exercises: { 'd3e-row': { done: true, sets: ['6', '6', '6'], load: '5 kg dumbbell', rir: '3', technique: 'clean' } }, updatedAt: '2026-10-05T08:00:00Z' };
+  M.dayRecord(data, '2026-10-06').recovery.previousWorkout = { workoutDate: '2026-10-05', pain: '1', status: 'same', complete: true };
+  const decision = M.decideExercise(data, '2026-10-05', 'd3e-row');
+  assert.equal(decision.state, 'HOLD'); assert.match(decision.reason, /sets or reps/i);
+  assert.equal(M.longitudinalHistory(data, '2026-10-05').exerciseTrends['d3e-row'].qualifiedExposures, 0);
+});
+
+test('clinical clearance false survives normalization and holds shoulder progression', () => {
+  const data = M.defaults(); data.settings.upperBodyCleared = false;
+  M.dayRecord(data, '2026-10-05').workout = { complete: true, painDuring: '1', painNext: '1', effort: '6', exercises: { 'd3e-row': { done: true, sets: ['12', '12', '12'], load: '5 kg dumbbell', rir: '3', technique: 'clean' } }, updatedAt: '2026-10-05T08:00:00Z' };
+  const normalized = M.normalize(data); assert.equal(normalized.settings.upperBodyCleared, false);
+  assert.equal(M.decideExercise(normalized, '2026-10-05', 'd3e-row').state, 'HOLD');
+});
+
+test('reliever no is false, reliever yes holds cardio, and both cardio days update', () => {
+  const make = relieverUsed => { const data = M.defaults(); for (let i = 0; i < 5; i++) { const key = M.addDays('2026-10-05', i); M.dayRecord(data, key).workout = { complete: true, cardioMinutes: i === 3 ? '30' : '', breathingSymptoms: 'none', relieverUsed, painDuring: '1', painNext: '1', effort: '6', exercises: {}, updatedAt: `${key}T08:00:00Z` }; } return data; };
+  const no = make('no'); const progressed = M.generateNextWeek(no, '2026-10-05');
+  assert.equal(progressed.items.find(item => item.id === 'cardio').state, 'PROGRESS');
+  assert.equal(M.planFor(no, '2026-10-15').minutes, 33); assert.equal(M.planFor(no, '2026-10-17').minutes, 33);
+  const yes = make('yes'); assert.equal(M.generateNextWeek(yes, '2026-10-05').items.find(item => item.id === 'cardio').state, 'HOLD');
+  assert.equal(M.longitudinalHistory(no, '2026-10-05').cardio.relieverUses, 0);
+});
+
+test('unstarted sessions can be swapped and missed sessions are counted explicitly', () => {
+  const data = M.defaults(); M.ensureGeneratedWeeks(data, '2026-10-12'); const monday = M.planFor(data, '2026-10-12').title; const tuesday = M.planFor(data, '2026-10-13').title;
+  M.shiftPlannedSession(data, '2026-10-12', '2026-10-13');
+  assert.equal(M.planFor(data, '2026-10-12').title, tuesday); assert.equal(M.planFor(data, '2026-10-13').title, monday);
+  data.generatedWeeks['2026-10-12'].rulesVersion = 0; M.ensureGeneratedWeeks(data, '2026-10-12');
+  assert.equal(M.planFor(data, '2026-10-12').title, tuesday); assert.equal(M.planFor(data, '2026-10-13').title, monday);
+  M.setWorkoutStatus(data, '2026-10-12', 'skipped');
+  assert.equal(M.longitudinalHistory(data, '2026-10-12', false).skippedSessions, 1);
+});
+
+test('reviewed plans reject unavailable loads and morning concerns remove unstarted shoulder work', () => {
+  const goals = { checklist: {} }; const sourceDate = '2026-10-18'; const targetDate = '2026-10-19';
+  const invalid = M.defaults(); const invalidSnapshot = M.dailyReviewSnapshot(invalid, sourceDate, sourceDate, goals);
+  const invalidValue = { cadence: 'daily', sourceDate, targetDate, sourceFingerprint: invalidSnapshot.sourceFingerprint, summary: 'Invalid load.', items: [{ id: 'd3e-row', name: 'Row', state: 'HOLD', to: '3 × 8 at 9 kg', reason: 'Test.', target: { targetSets: 3, targetReps: 8, implement: 'dumbbell', loadKg: 9, loadLabel: '9 kg dumbbell', variation: 'standard' } }] };
+  assert.throws(() => M.storeDailyReviewedPlan(invalid, invalidValue, goals), /unavailable equipment/);
+
+  const data = M.defaults(); const snapshot = M.dailyReviewSnapshot(data, sourceDate, sourceDate, goals);
+  const value = { ...invalidValue, sourceFingerprint: snapshot.sourceFingerprint, summary: 'Hold shoulder dose.', items: [{ id: 'd3e-row', name: 'Row', state: 'HOLD', to: '3 × 8 at 5 kg', reason: 'Preserve the dose.', target: { targetSets: 3, targetReps: 8, implement: 'dumbbell', loadKg: 5, loadLabel: '5 kg dumbbell', variation: 'standard' } }] };
+  M.storeDailyReviewedPlan(data, value, goals); M.activateDailyReviewedPlan(data, targetDate, goals);
+  M.dayRecord(data, targetDate).recovery.previousWorkout = { workoutDate: sourceDate, pain: '4', status: 'worse', complete: true };
+  const adjusted = M.revalidateDailyPlanForRecovery(data, targetDate);
+  assert.equal(adjusted.status, 'safety-adjusted'); assert.equal(M.planFor(data, targetDate).ids.some(M.isShoulderLoading), false);
 });
 
 test('cloud merge restores remote settings on an empty device and keeps newest workouts', () => {
