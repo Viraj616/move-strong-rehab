@@ -9,15 +9,63 @@
   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const clone = value => JSON.parse(JSON.stringify(value));
 
-  const RULES_VERSION = 8;
+  const RULES_VERSION = 9;
   const equipmentDefaults = { pullUpBar: true, bands: ['Unlabelled band'], dumbbellsKg: [5, 5], kettlebellsKg: [10], rowingMachine: true };
+  const gymEquipmentDefaults = {
+    facility: 'Nuffield Health Friern Barnet',
+    assumed: { freeWeights: true, dumbbells: true, cables: true, machines: true, pool: true, sauna: true, steamRoom: true, onSitePhysio: true },
+    verification: { squatRack: null, cableStation: null, assistedPullupDipMachine: null, rings: null },
+    verifiedDumbbellsKg: [], verifiedKettlebellsKg: [], verifiedBands: []
+  };
+  const trainingTrialDefaults = { start: '2026-11-23', end: '2026-12-04', weekdayStart: '15:00', weekdayEnd: '16:30', keepIfSessionsPerWeek: 4, status: 'trial' };
+  const fitnessProfileDefaults = {
+    baselineDate: '2026-11-23', detrainingWeeks: 2, strictPullupsMin: 3, strictPullupsMax: 4, pushupsApprox: 15,
+    shoulderStatus: 'Feels fine', bodyweightEstimateKg: 65, bodyweightKg: null, bodyweightVerifiedAt: '',
+    retests: { strictPullups: null, deadHangSeconds: null, pushups: null, tuckLSitSeconds: null, easy5kMinutes: null, chestFeel: '', completedAt: '' }
+  };
   const goalDefaults = { pullups: null, dips: null, hollow: null, kneeRaises: null, support: null, runMinutes: null, checklist: {} };
-  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '07:05', work: '09:00', windDown: '22:15', bedtime: '22:45', saunaTime: '18:00', saunaDays: [1, 3], movementTimes: ['11:00', '13:00', '15:30'], reminders: false, recoveryReminders: true, aiWeeklyReview: false, upperBodyCleared: true, clearanceNotes: 'Physio cleared all exercise categories; rebuild load, volume and skill complexity gradually.', equipment: equipmentDefaults };
+  const settingsDefaults = { programmeStart: '2026-09-21', wake: '06:30', workout: '15:00', work: '08:30', windDown: '22:15', bedtime: '22:45', saunaTime: '16:30', saunaDays: [2], movementTimes: ['10:30', '12:00'], reminders: false, recoveryReminders: true, aiWeeklyReview: false, upperBodyCleared: true, clearanceNotes: 'Shoulder currently feels fine. Rebuild after two weeks off; apply the pain and next-morning progression rules.', equipment: equipmentDefaults, equipmentProfiles: { home: equipmentDefaults, gym: gymEquipmentDefaults }, trainingTrial: trainingTrialDefaults, confirmedFitnessUpdate: '2026-11-23' };
   function normalizeEquipment(value) {
     const source = isObject(value) ? value : equipmentDefaults;
     const loads = key => Array.isArray(source[key]) ? source[key].map(Number).filter(n => Number.isFinite(n) && n > 0 && n <= 200).slice(0, 20).sort((a, b) => a - b) : clone(equipmentDefaults[key]);
     const bands = Array.isArray(source.bands) ? [...new Set(source.bands.map(v => String(v).trim()).filter(Boolean))].slice(0, 10) : clone(equipmentDefaults.bands);
     return { pullUpBar: source.pullUpBar !== false, bands, dumbbellsKg: loads('dumbbellsKg'), kettlebellsKg: loads('kettlebellsKg'), rowingMachine: source.rowingMachine !== false };
+  }
+  function normalizeGymEquipment(value) {
+    const source = isObject(value) ? value : {};
+    const assumed = isObject(source.assumed) ? source.assumed : {};
+    const verification = isObject(source.verification) ? source.verification : {};
+    const triState = key => verification[key] === true ? true : verification[key] === false ? false : null;
+    const loads = key => Array.isArray(source[key]) ? source[key].map(Number).filter(n => Number.isFinite(n) && n > 0 && n <= 200).slice(0, 30).sort((a, b) => a - b) : [];
+    return {
+      facility: String(source.facility || gymEquipmentDefaults.facility).slice(0, 120),
+      assumed: Object.fromEntries(Object.keys(gymEquipmentDefaults.assumed).map(key => [key, assumed[key] !== false])),
+      verification: Object.fromEntries(Object.keys(gymEquipmentDefaults.verification).map(key => [key, triState(key)])),
+      verifiedDumbbellsKg: loads('verifiedDumbbellsKg'), verifiedKettlebellsKg: loads('verifiedKettlebellsKg'),
+      verifiedBands: Array.isArray(source.verifiedBands) ? [...new Set(source.verifiedBands.map(v => String(v).trim()).filter(Boolean))].slice(0, 10) : []
+    };
+  }
+  function normalizeEquipmentProfiles(value, legacyHome) {
+    const source = isObject(value) ? value : {};
+    return { home: normalizeEquipment(legacyHome || source.home || equipmentDefaults), gym: normalizeGymEquipment(source.gym) };
+  }
+  function normalizeFitnessProfile(value) {
+    const source = isObject(value) ? value : {}; const retests = isObject(source.retests) ? source.retests : {};
+    const number = (key, fallback, min = 0, max = 1000) => {
+      if (source[key] === null) return null;
+      const n = Number(source[key]); return Number.isFinite(n) && n >= min && n <= max ? n : fallback;
+    };
+    const retestNumber = (key, max = 10000) => {
+      if (retests[key] === '' || retests[key] === null || retests[key] === undefined) return null;
+      const n = Number(retests[key]); return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
+    };
+    return {
+      ...fitnessProfileDefaults, ...source, baselineDate: validDate(source.baselineDate || '') ? source.baselineDate : fitnessProfileDefaults.baselineDate,
+      detrainingWeeks: number('detrainingWeeks', 2, 0, 52), strictPullupsMin: number('strictPullupsMin', 3, 0, 100), strictPullupsMax: number('strictPullupsMax', 4, 0, 100),
+      pushupsApprox: number('pushupsApprox', 15, 0, 500), bodyweightEstimateKg: number('bodyweightEstimateKg', 65, 25, 300), bodyweightKg: number('bodyweightKg', null, 25, 300),
+      bodyweightVerifiedAt: String(source.bodyweightVerifiedAt || '').slice(0, 40), shoulderStatus: String(source.shoulderStatus || 'Feels fine').slice(0, 120),
+      retests: { strictPullups: retestNumber('strictPullups', 100), deadHangSeconds: retestNumber('deadHangSeconds'), pushups: retestNumber('pushups', 500), tuckLSitSeconds: retestNumber('tuckLSitSeconds'), easy5kMinutes: retestNumber('easy5kMinutes', 300), chestFeel: String(retests.chestFeel || '').slice(0, 120), completedAt: String(retests.completedAt || '').slice(0, 40) }
+    };
   }
   function normalizeGoals(value) {
     const source = isObject(value) ? value : {};
@@ -31,7 +79,7 @@
       : {};
     return { ...goalDefaults, pullups: benchmark('pullups'), dips: benchmark('dips'), hollow: benchmark('hollow'), kneeRaises: benchmark('kneeRaises'), support: benchmark('support'), runMinutes: benchmark('runMinutes'), checklist };
   }
-  const defaults = () => ({ schemaVersion: 4, settings: { ...settingsDefaults, equipment: normalizeEquipment(equipmentDefaults) }, days: {}, milestones: {}, reminderState: {}, generatedWeeks: {}, weeklyReviews: {}, dailyReviews: {}, reviewDrafts: {} });
+  const defaults = () => ({ schemaVersion: 4, settings: { ...settingsDefaults, equipment: normalizeEquipment(equipmentDefaults), equipmentProfiles: normalizeEquipmentProfiles(settingsDefaults.equipmentProfiles), trainingTrial: clone(trainingTrialDefaults) }, fitnessProfile: normalizeFitnessProfile(fitnessProfileDefaults), days: {}, milestones: {}, reminderState: {}, generatedWeeks: {}, weeklyReviews: {}, dailyReviews: {}, reviewDrafts: {} });
   const plans = [
     { title: 'Pull + shoulder control', short: 'Pull', kind: 'strength', minutes: 45, ids: ['d3e-warm', 'd3e-scap-pull', 'd3e-pullup-single', 'd3e-row', 'd3e-er', 'd1m-deadbug'] },
     { title: 'Legs + aerobic base', short: 'Legs', kind: 'strength', minutes: 45, ids: ['d2e-warm', 'd2e-bss', 'd2e-slrdl', 'd2e-calf', 'd2e-zone2'] },
@@ -42,13 +90,116 @@
     { title: 'Recovery + mobility', short: 'Recovery', kind: 'recovery', minutes: 20, ids: ['d2m-9090', 'd2m-hinge', 'd1m-hiprot'] }
   ];
 
+  const reentryExercise = (name, prescription, targetSets, targetReps, implement, group = 'Accessory') => ({ name, prescription, targetSets, targetReps, implement, group, variation: 're-entry' });
+  const reentryWeekOne = [
+    {
+      title: 'Pull + core · re-entry', short: 'Pull', kind: 'strength', minutes: 90, equipmentProfile: 'gym', reentryPhase: 1, targetRir: '3–4',
+      retestFields: ['strictPullups', 'deadHangSeconds'],
+      ids: ['re-mon-rower', 're-mon-pullapart', 're-mon-scap', 're-mon-test-pullup', 're-mon-pullup', 're-mon-pulldown', 're-mon-cablerow', 're-mon-facepull', 're-mon-deadbug'],
+      exerciseOverrides: {
+        're-mon-rower': reentryExercise('Rower warm-up', '5 min easy', 1, 5, 'rowing machine', 'Warm-up'),
+        're-mon-pullapart': reentryExercise('Band pull-apart', '2 × 15', 2, 15, 'band', 'Warm-up'),
+        're-mon-scap': reentryExercise('Scapular pull-up', '2 × 5', 2, 5, 'pull-up bar', 'Warm-up'),
+        're-mon-test-pullup': reentryExercise('TEST · max strict pull-ups', 'One controlled max set, then rest 5 min', 1, 1, 'pull-up bar', 'Baseline test'),
+        're-mon-pullup': reentryExercise('Strict pull-up', '4 × 2 · stop at 3–4 RIR', 4, 2, 'pull-up bar', 'Main lift'),
+        're-mon-pulldown': reentryExercise('Lat pulldown', '3 × 10', 3, 10, 'cable station', 'Main lift'),
+        're-mon-cablerow': reentryExercise('Seated cable row', '3 × 10', 3, 10, 'cable station', 'Main lift'),
+        're-mon-facepull': reentryExercise('Face pull', '2 × 15 · light', 2, 15, 'cable station', 'Accessory'),
+        're-mon-deadbug': reentryExercise('Dead bug', '3 × 8 each side', 3, 8, 'bodyweight', 'Core')
+      }
+    },
+    {
+      title: 'Lower body · heavy re-entry', short: 'Lower', kind: 'strength', minutes: 90, equipmentProfile: 'gym', reentryPhase: 1, targetRir: '3–4',
+      ids: ['re-tue-warm', 're-tue-squat', 're-tue-rdl', 're-tue-bss', 're-tue-legcurl', 're-tue-calf'],
+      exerciseOverrides: {
+        're-tue-warm': reentryExercise('Bike + movement warm-up', '5 min bike, bodyweight squats, glute bridges', 1, 1, 'bike and bodyweight', 'Warm-up'),
+        're-tue-squat': reentryExercise('Goblet or back squat', '3 × 8 · find conservative loads', 3, 8, 'free weights or squat rack', 'Main lift'),
+        're-tue-rdl': reentryExercise('Dumbbell Romanian deadlift', '3 × 8', 3, 8, 'dumbbells', 'Main lift'),
+        're-tue-bss': reentryExercise('Bulgarian split squat', '2 × 8 each leg', 2, 8, 'dumbbells or bodyweight', 'Main lift'),
+        're-tue-legcurl': reentryExercise('Leg curl', '2 × 10', 2, 10, 'machine', 'Accessory'),
+        're-tue-calf': reentryExercise('Calf raise', '3 × 12', 3, 12, 'machine or bodyweight', 'Accessory')
+      }
+    },
+    {
+      title: 'Easy swim + shoulder prehab', short: 'Swim', kind: 'recovery', minutes: 45, equipmentProfile: 'gym', reentryPhase: 1, targetRir: '3–4', heatAfterOnly: true,
+      ids: ['re-wed-swim', 're-wed-er', 're-wed-ytw', 're-wed-heat'],
+      exerciseOverrides: {
+        're-wed-swim': reentryExercise('Easy swim', '20–30 min easy', 1, 25, 'pool', 'Easy conditioning'),
+        're-wed-er': reentryExercise('Band external rotation', '2 × 15', 2, 15, 'band', 'Shoulder prehab'),
+        're-wed-ytw': reentryExercise('Y–T–W', '2 × 8 each position', 2, 8, 'bodyweight', 'Shoulder prehab'),
+        're-wed-heat': reentryExercise('Optional sauna or steam', '10 min max · after training only', 1, 10, 'sauna or steam room', 'Recovery')
+      }
+    },
+    {
+      title: 'Push + handstand / L-sit skills', short: 'Push', kind: 'strength', minutes: 90, equipmentProfile: 'gym', reentryPhase: 1, targetRir: '3–4',
+      retestFields: ['pushups', 'tuckLSitSeconds'],
+      ids: ['re-thu-warm', 're-thu-test-pushup', 're-thu-test-lsit', 're-thu-bench', 're-thu-press', 're-thu-dip', 're-thu-pike', 're-thu-lsit'],
+      exerciseOverrides: {
+        're-thu-warm': reentryExercise('Wrist + shoulder warm-up', 'Wrist prep, band dislocates, scapular push-ups 2 × 10', 2, 10, 'band and bodyweight', 'Warm-up'),
+        're-thu-test-pushup': reentryExercise('TEST · max push-ups', 'One controlled max set', 1, 1, 'bodyweight', 'Baseline test'),
+        're-thu-test-lsit': reentryExercise('TEST · max tuck L-sit', 'One controlled max hold', 1, 1, 'bodyweight', 'Baseline test'),
+        're-thu-bench': reentryExercise('Dumbbell bench press', '3 × 10', 3, 10, 'dumbbells and bench', 'Main lift'),
+        're-thu-press': reentryExercise('Light dumbbell shoulder press', '2 × 10', 2, 10, 'dumbbells', 'Main lift'),
+        're-thu-dip': reentryExercise('Assisted dip', '2 × 6 · stop for front-of-shoulder pain', 2, 6, 'assisted dip machine or feet/band assistance', 'Main lift'),
+        're-thu-pike': reentryExercise('Wall pike hold', '3 × 20 sec', 3, 20, 'bodyweight', 'Skill'),
+        're-thu-lsit': reentryExercise('Tuck L-sit', '3 × 10 sec', 3, 10, 'bodyweight', 'Skill')
+      }
+    },
+    {
+      title: 'Light full body · home fallback', short: 'Full body', kind: 'strength', minutes: 60, equipmentProfile: 'home', reentryPhase: 1, targetRir: '3–4', fridayFallback: true,
+      ids: ['re-fri-row', 're-fri-squat', 're-fri-pushup', 're-fri-bridge', 're-fri-hollow'],
+      exerciseOverrides: {
+        're-fri-row': reentryExercise('Inverted row', '3 × 8', 3, 8, 'home pull-up bar or sturdy table', 'Main lift'),
+        're-fri-squat': reentryExercise('Kettlebell goblet squat', '2 × 12 · keep legs light for Saturday', 2, 12, 'kettlebell', 'Main lift'),
+        're-fri-pushup': reentryExercise('Push-up', '2 × 10', 2, 10, 'bodyweight', 'Main lift'),
+        're-fri-bridge': reentryExercise('Single-leg glute bridge', '2 × 10 each leg', 2, 10, 'bodyweight', 'Accessory'),
+        're-fri-hollow': reentryExercise('Hollow hold', '3 × 20 sec', 3, 20, 'bodyweight', 'Core')
+      }
+    },
+    {
+      title: 'Long easy run · 5 km', short: 'Long run', kind: 'cardio', minutes: 45, equipmentProfile: 'home', reentryPhase: 1, targetRir: 'conversational',
+      retestFields: ['easy5kMinutes', 'chestFeel'], ids: ['re-sat-run'],
+      exerciseOverrides: { 're-sat-run': reentryExercise('Easy 5 km run', '5 km at conversational pace', 1, 5, 'running', 'Easy conditioning') }
+    },
+    { title: 'Rest', short: 'Rest', kind: 'rest', minutes: 0, equipmentProfile: 'home', reentryPhase: 1, ids: [], exerciseOverrides: {} }
+  ];
+  const reentryWeekTwo = clone(reentryWeekOne).map(plan => ({ ...plan, reentryPhase: 2 }));
+  const weekTwoMainSets = { 're-mon-pullup': 5, 're-mon-pulldown': 4, 're-mon-cablerow': 4, 're-tue-squat': 4, 're-tue-rdl': 4, 're-tue-bss': 3, 're-thu-bench': 4, 're-thu-press': 3, 're-thu-dip': 3, 're-fri-row': 4, 're-fri-squat': 3, 're-fri-pushup': 3 };
+  reentryWeekTwo.forEach(plan => {
+    plan.title = plan.title.replace('re-entry', 're-entry · week 2');
+    plan.retestFields = [];
+    for (const [id, sets] of Object.entries(weekTwoMainSets)) if (plan.exerciseOverrides[id]) {
+      const targetValue = plan.exerciseOverrides[id]; targetValue.targetSets = sets;
+      targetValue.prescription = targetValue.prescription.replace(/^\d+\s*×/, `${sets} ×`);
+    }
+  });
+
+  function reentryPlanFor(key) {
+    if (key >= '2026-11-23' && key <= '2026-11-29') return clone(reentryWeekOne[weekday(key)]);
+    if (key >= '2026-11-30' && key <= '2026-12-06') return clone(reentryWeekTwo[weekday(key)]);
+    return null;
+  }
+
   function dayRecord(health, key) { return health.days[key] ||= { routine: {}, activities: {}, recovery: {}, workout: { complete: false, exercises: {} } }; }
   function validDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && dateKey(date(value)) === value; }
   function normalize(value) {
     const base = defaults();
     if (!value) return base;
     if (!isObject(value) || ![2, 3, 4].includes(value.schemaVersion) || !isObject(value.days) || !isObject(value.settings)) throw new Error('Unsupported health data');
-    const result = { ...base, ...clone(value), schemaVersion: 4, settings: { ...base.settings, ...value.settings, equipment: normalizeEquipment(value.settings.equipment) } };
+    const result = { ...base, ...clone(value), schemaVersion: 4, settings: { ...base.settings, ...value.settings } };
+    const firstConfirmedUpdate = result.settings.confirmedFitnessUpdate !== '2026-11-23';
+    result.settings.equipmentProfiles = normalizeEquipmentProfiles(value.settings.equipmentProfiles, value.settings.equipment);
+    result.settings.equipment = result.settings.equipmentProfiles.home;
+    result.settings.trainingTrial = { ...trainingTrialDefaults, ...(isObject(value.settings.trainingTrial) ? value.settings.trainingTrial : {}) };
+    result.fitnessProfile = normalizeFitnessProfile(value.fitnessProfile);
+    if (firstConfirmedUpdate) {
+      if (result.settings.workout === '07:05') result.settings.workout = '15:00';
+      if (result.settings.work === '09:00') result.settings.work = '08:30';
+      if (result.settings.saunaTime === '18:00') result.settings.saunaTime = '16:30';
+      if (JSON.stringify(result.settings.movementTimes) === JSON.stringify(['11:00', '13:00', '15:30'])) result.settings.movementTimes = ['10:30', '12:00'];
+      result.settings.saunaDays = [2]; result.settings.trainingTrial = clone(trainingTrialDefaults); result.settings.confirmedFitnessUpdate = '2026-11-23';
+      result.fitnessProfile = normalizeFitnessProfile(fitnessProfileDefaults);
+    }
     result.settings.upperBodyCleared = result.settings.upperBodyCleared === true;
     result.settings.clearanceNotes = result.settings.clearanceNotes || base.settings.clearanceNotes;
     result.generatedWeeks = isObject(result.generatedWeeks) ? result.generatedWeeks : {};
@@ -83,17 +234,18 @@
   function mergeHealth(incoming, existing) {
     const restored = normalize(incoming);
     if (!existing) return restored;
-    const localHadEquipment = isObject(existing?.settings?.equipment); const local = normalize(existing); const days = { ...restored.days };
+    const localHadEquipment = isObject(existing?.settings?.equipment) || isObject(existing?.settings?.equipmentProfiles); const local = normalize(existing); const days = { ...restored.days };
     for (const [key, day] of Object.entries(local.days)) {
       const saved = restored.days[key] || {};
       days[key] = { ...saved, ...day, routine: { ...saved.routine, ...day.routine }, activities: { ...saved.activities, ...day.activities }, recovery: { ...saved.recovery, ...day.recovery }, workout: day.workout?.updatedAt || Object.keys(day.workout?.exercises || {}).length ? day.workout : saved.workout || day.workout };
     }
-    return { ...restored, ...local, schemaVersion: 4, settings: { ...restored.settings, ...local.settings, equipment: localHadEquipment ? local.settings.equipment : restored.settings.equipment }, days, milestones: { ...restored.milestones, ...local.milestones }, generatedWeeks: { ...restored.generatedWeeks, ...local.generatedWeeks }, weeklyReviews: { ...restored.weeklyReviews, ...local.weeklyReviews }, dailyReviews: { ...restored.dailyReviews, ...local.dailyReviews }, reviewDrafts: { ...restored.reviewDrafts, ...local.reviewDrafts } };
+    return { ...restored, ...local, schemaVersion: 4, settings: { ...restored.settings, ...local.settings, equipment: localHadEquipment ? local.settings.equipment : restored.settings.equipment, equipmentProfiles: localHadEquipment ? local.settings.equipmentProfiles : restored.settings.equipmentProfiles }, fitnessProfile: { ...restored.fitnessProfile, ...local.fitnessProfile, retests: { ...restored.fitnessProfile?.retests, ...local.fitnessProfile?.retests } }, days, milestones: { ...restored.milestones, ...local.milestones }, generatedWeeks: { ...restored.generatedWeeks, ...local.generatedWeeks }, weeklyReviews: { ...restored.weeklyReviews, ...local.weeklyReviews }, dailyReviews: { ...restored.dailyReviews, ...local.dailyReviews }, reviewDrafts: { ...restored.reviewDrafts, ...local.reviewDrafts } };
   }
   function mergeCloud(remote, local) {
-    const localHadEquipment = isObject(local?.settings?.equipment); const a = normalize(remote); const b = normalize(local); const localHasRecords = Object.values(b.days).some(day => day.workout?.updatedAt || day.recovery?.updatedAt || day.sauna?.updatedAt || Object.keys(day.workout?.exercises || {}).length);
+    const localHadEquipment = isObject(local?.settings?.equipment) || (Number(local?.schemaVersion) >= 4 && isObject(local?.settings?.equipmentProfiles)); const a = normalize(remote); const b = normalize(local); const localHasRecords = Object.values(b.days).some(day => day.workout?.updatedAt || day.recovery?.updatedAt || day.sauna?.updatedAt || Object.keys(day.workout?.exercises || {}).length);
     const result = { ...a, ...b, schemaVersion: 4, settings: localHasRecords ? { ...a.settings, ...b.settings } : { ...b.settings, ...a.settings }, days: {}, milestones: { ...a.milestones, ...b.milestones }, reminderState: { ...a.reminderState, ...b.reminderState }, generatedWeeks: { ...a.generatedWeeks, ...b.generatedWeeks }, weeklyReviews: { ...a.weeklyReviews, ...b.weeklyReviews }, dailyReviews: { ...a.dailyReviews, ...b.dailyReviews }, reviewDrafts: { ...a.reviewDrafts, ...b.reviewDrafts } };
-    if (localHasRecords && !localHadEquipment) result.settings.equipment = a.settings.equipment;
+    if (localHasRecords && !localHadEquipment) { result.settings.equipment = a.settings.equipment; result.settings.equipmentProfiles = a.settings.equipmentProfiles; }
+    result.fitnessProfile = localHasRecords ? { ...a.fitnessProfile, ...b.fitnessProfile, retests: { ...a.fitnessProfile?.retests, ...b.fitnessProfile?.retests } } : { ...b.fitnessProfile, ...a.fitnessProfile, retests: { ...b.fitnessProfile?.retests, ...a.fitnessProfile?.retests } };
     for (const key of new Set([...Object.keys(a.days), ...Object.keys(b.days)])) {
       const x = a.days[key] || {}; const y = b.days[key] || {};
       result.days[key] = { ...x, ...y, routine: { ...x.routine, ...y.routine }, activities: { ...x.activities, ...y.activities }, recovery: newest(x.recovery, y.recovery) || {}, workout: newest(x.workout, y.workout) || { complete: false, exercises: {} }, sauna: newest(x.sauna, y.sauna) };
@@ -104,8 +256,11 @@
 
   function planFor(health, key) {
     const day = health.days[key];
+    const reentry = reentryPlanFor(key);
+    if (reentry && !workoutStarted(day)) return reentry;
     // A started day is frozen to the exact plan that was active when logging began.
     if (day?.plan?.title && Array.isArray(day.plan.ids)) return day.plan;
+    if (reentry) return reentry;
     const generated = health.generatedWeeks?.[weekStart(key)]?.days?.[weekday(key)];
     if (generated?.title && Array.isArray(generated.ids)) return generated;
     const recorded = day?.workout?.complete || day?.workout?.updatedAt || Object.keys(day?.workout?.exercises || {}).length;
@@ -132,7 +287,22 @@
     return { from: fromPlan, to: toPlan };
   }
 
-  const isShoulderLoading = id => (/pull|row|push|scap|wallslide|dip|highpull|(^|-)er$|warm/.test(id) && !/deadbug/.test(id)) || ['d3s-knee', 'd5s-support'].includes(id);
+  const isShoulderLoading = id => (/pull|row|push|scap|wallslide|dip|highpull|bench|press|pike|lsit|l-sit|(^|-)er$|warm/.test(id) && !/deadbug|tue-warm/.test(id)) || ['d3s-knee', 'd5s-support'].includes(id);
+  function equipmentForProfile(health, profile = 'home') {
+    const profiles = normalizeEquipmentProfiles(health.settings.equipmentProfiles, health.settings.equipment);
+    if (profile !== 'gym') return profiles.home;
+    const gym = profiles.gym; const freeWeights = gym.assumed.freeWeights || gym.assumed.dumbbells;
+    return {
+      pullUpBar: gym.verification.assistedPullupDipMachine !== false,
+      bands: gym.verifiedBands.length ? gym.verifiedBands : ['Gym band · load unverified'],
+      dumbbellsKg: gym.verifiedDumbbellsKg,
+      kettlebellsKg: gym.verifiedKettlebellsKg,
+      rowingMachine: gym.assumed.machines !== false,
+      assumedFreeWeights: freeWeights, assumedCables: gym.assumed.cables && gym.verification.cableStation !== false,
+      assumedMachines: gym.assumed.machines, verification: gym.verification, facility: gym.facility
+    };
+  }
+  const planEquipment = (health, key) => equipmentForProfile(health, planFor(health, key).equipmentProfile || 'home');
   const workoutStarted = day => Boolean(day?.workout?.updatedAt || day?.workout?.complete || Object.keys(day?.workout?.exercises || {}).length);
   const usedReliever = workout => workout?.relieverUsed === true || workout?.relieverUsed === 'yes';
   function recoveryForWorkout(health, key) {
@@ -215,7 +385,7 @@
     'd2e-calf': ['dumbbellsKg', 'kettlebellsKg', 'bodyweight'], 'd1m-deadbug': ['bodyweight'],
     'd3s-hollow': ['bodyweight'], 'd3s-knee': ['pullUpBar', 'bodyweight'], 'd5s-support': ['pullUpBar', 'bodyweight'], 'd5s-dip': ['pullUpBar', 'bodyweight'], 'd5s-rowline': ['bands'], 'd5s-highpull': ['pullUpBar', 'bands'], cardio: ['rowingMachine', 'walking', 'running']
   };
-  const equipmentSignature = health => JSON.stringify(normalizeEquipment(health.settings.equipment));
+  const equipmentSignature = health => JSON.stringify({ legacyHome: normalizeEquipment(health.settings.equipment), profiles: normalizeEquipmentProfiles(health.settings.equipmentProfiles, health.settings.equipment) });
   const numericSets = entry => (entry?.sets || []).map(Number).filter(Number.isFinite).filter(n => n >= 0);
   const setSummary = entry => {
     const reps = numericSets(entry); if (!reps.length) return 'No completed reps recorded';
@@ -589,7 +759,7 @@
     return { fromDate, throughDate, firstRecordedDate, lastRecordedDate, completedSessions, skippedSessions, weeksWithTraining: weeks.size, weeks: [...weeks.values()], exerciseTrends, cardio, safety };
   }
   function sourceFingerprint(health, start, goals) {
-    const value = JSON.stringify({ equipment: normalizeEquipment(health.settings.equipment), goals: normalizeGoals(goals), history: longitudinalHistory(health, start), previousWeek: boundedReviewDays(health, addDays(start, -7)), days: boundedReviewDays(health, start) });
+    const value = JSON.stringify({ equipmentProfiles: normalizeEquipmentProfiles(health.settings.equipmentProfiles, health.settings.equipment), fitnessProfile: normalizeFitnessProfile(health.fitnessProfile), goals: normalizeGoals(goals), history: longitudinalHistory(health, start), previousWeek: boundedReviewDays(health, addDays(start, -7)), days: boundedReviewDays(health, start) });
     let first = 2166136261; let second = 0x9e3779b9;
     for (let i = 0; i < value.length; i++) { const code = value.charCodeAt(i); first = Math.imul(first ^ code, 16777619); second = Math.imul(second ^ (code + i), 2246822519); }
     return `v1-${(first >>> 0).toString(16).padStart(8, '0')}-${(second >>> 0).toString(16).padStart(8, '0')}-${value.length}`;
@@ -601,15 +771,15 @@
     return {
       schemaVersion: 2, sourceWeekStart, nextWeekStart, sourceFingerprint: sourceFingerprint(health, sourceWeekStart, goals),
       ready: completedSessions >= 5 || today >= nextWeekStart, completedSessions,
-      goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment), skillPathways: skillPathways(health, addDays(sourceWeekStart, 6)),
+      goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment), equipmentProfiles: normalizeEquipmentProfiles(health.settings.equipmentProfiles, health.settings.equipment), fitnessProfile: normalizeFitnessProfile(health.fitnessProfile), skillPathways: skillPathways(health, addDays(sourceWeekStart, 6)),
       clinical: { upperBodyCleared: Boolean(health.settings.upperBodyCleared) },
       history: longitudinalHistory(health, sourceWeekStart),
       previousWeek: { sourceWeekStart: previousWeekStart, days: boundedReviewDays(health, previousWeekStart) }, days,
       safetyPolicy: {
-        progress: 'Completed target, clean technique, 2–4 RIR, effort below 9, shoulder pain no higher than 2/10, stable next-morning recovery.',
-        hold: 'Missing recovery or exercise quality data, incomplete targets, okay technique, RIR below 2, effort 9+, or pain 3/10.',
-        regress: 'Poor technique, pain 4/10+ during, pain 3/10+ next morning, worse recovery, plate-site symptoms, or moderate/stopping asthma symptoms.',
-        constraints: 'Use all-history trends for context and the two detailed weeks for current dosing; change one major variable at a time; replace rather than stack goal-specific work; cardio increase must not exceed 10%; prescribe only owned equipment.'
+        progress: 'Completed target, clean technique, 3–4 RIR, effort below 9, pain no higher than 3/10 and gone by the next morning.',
+        hold: 'Missing recovery or exercise quality data, incomplete targets, okay technique, RIR below 3, effort 9+, or incomplete week-1 retests.',
+        regress: 'Poor technique, pain above 3/10, pain still present next morning, worse recovery, plate-site symptoms, or moderate/stopping asthma symptoms.',
+        constraints: 'Use the active home/gym profile, all-history trends and the two detailed weeks; change one major variable at a time; keep push and pull apart; do not add a second run until after re-entry.'
       }
     };
   }
@@ -638,7 +808,7 @@
   function dailyReviewFingerprint(health, sourceDate, goals, legacyLogs) {
     const targetDate = addDays(sourceDate, 1);
     const value = JSON.stringify({
-      equipment: normalizeEquipment(health.settings.equipment), goals: normalizeGoals(goals), notes: reviewTextContext(health, sourceDate, goals),
+      equipmentProfiles: normalizeEquipmentProfiles(health.settings.equipmentProfiles, health.settings.equipment), fitnessProfile: normalizeFitnessProfile(health.fitnessProfile), goals: normalizeGoals(goals), notes: reviewTextContext(health, sourceDate, goals),
       history: longitudinalHistory(health, sourceDate, false), legacyHistory: legacyReviewContext(legacyLogs), recentDays: [...boundedReviewDays(health, addDays(sourceDate, -13)), ...boundedReviewDays(health, addDays(sourceDate, -6))]
     });
     let first = 2166136261; let second = 0x9e3779b9;
@@ -649,15 +819,15 @@
     const sourceDate = dateKey(date(sourceValue)); const targetDate = addDays(sourceDate, 1); const sourceDay = health.days[sourceDate] || {};
     return {
       schemaVersion: 3, cadence: 'daily', sourceDate, targetDate, sourceFingerprint: dailyReviewFingerprint(health, sourceDate, goals, legacyLogs),
-      ready: sourceDate <= today, sourceComplete: Boolean(sourceDay.workout?.complete), goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment),
+      ready: sourceDate <= today, sourceComplete: Boolean(sourceDay.workout?.complete), goals: normalizeGoals(goals), equipment: normalizeEquipment(health.settings.equipment), equipmentProfiles: normalizeEquipmentProfiles(health.settings.equipmentProfiles, health.settings.equipment), fitnessProfile: normalizeFitnessProfile(health.fitnessProfile),
       clinical: { upperBodyCleared: Boolean(health.settings.upperBodyCleared) },
       history: longitudinalHistory(health, sourceDate, false), skillPathways: skillPathways(health, sourceDate), legacyHistory: legacyReviewContext(legacyLogs), recentDays: [...boundedReviewDays(health, addDays(sourceDate, -13)), ...boundedReviewDays(health, addDays(sourceDate, -6))],
       notes: reviewTextContext(health, sourceDate, goals), targetPlan: boundedReviewDays(health, targetDate)[0].plan,
       safetyPolicy: {
-        progress: 'Completed target, clean technique, 2–4 RIR, effort below 9, shoulder pain no higher than 2/10, and stable recovery evidence.',
+        progress: 'Completed target, clean technique, 3–4 RIR, effort below 9, pain no higher than 3/10 and gone by the next morning.',
         hold: 'Missing recovery or quality data, incomplete targets, borderline symptoms, or ambiguous notes mean HOLD.',
         regress: 'Poor technique, pain 4/10+ during, pain 3/10+ next morning, worse recovery, plate-site symptoms, or moderate/stopping asthma symptoms mean REGRESS or MODIFY.',
-        constraints: 'Use all prior history and notes for context, weight the latest days most heavily, modify tomorrow only, preserve the weekly structure, change one major variable at a time, and prescribe only owned equipment.'
+        constraints: 'Use the active home/gym profile, all prior history and notes, weight the latest days most heavily, modify tomorrow only, preserve the weekly structure, keep push and pull apart, and do not add a second run until after re-entry.'
       }
     };
   }
@@ -828,8 +998,67 @@
     health.generatedWeeks[review.nextWeekStart] = { sourceWeekStart: review.sourceWeekStart, sourceFingerprint: fingerprint, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: finalReview.equipmentSignature, baseline: Boolean(review.baseline), days };
     health.weeklyReviews[review.sourceWeekStart] = finalReview; return finalReview;
   }
+  function reentryBaselineComplete(health) {
+    const tests = normalizeFitnessProfile(health.fitnessProfile).retests;
+    return ['strictPullups', 'deadHangSeconds', 'pushups', 'tuckLSitSeconds', 'easy5kMinutes'].every(key => tests[key] !== null && tests[key] !== '' && Number.isFinite(Number(tests[key]))) && Boolean(String(tests.chestFeel || '').trim());
+  }
+  function latestReentryExposure(health, through, id) {
+    return Object.entries(health.days).filter(([key, day]) => key >= '2026-11-23' && key <= through && day.workout?.exercises?.[id])
+      .sort(([a], [b]) => b.localeCompare(a)).map(([key, day]) => ({ key, entry: day.workout.exercises[id], workout: day.workout, recovery: recoveryForWorkout(health, key), plan: planFor(health, key) }))[0] || null;
+  }
+  function reentryProgressionTarget(health, through, id, planned, baselineReady) {
+    const latest = latestReentryExposure(health, through, id); const shoulder = isShoulderLoading(id);
+    const plannedSets = Number(planned.targetSets) || 1; const plannedReps = Number(planned.targetReps) || 1;
+    const reps = numericSets(latest?.entry); const actualSets = reps.length || plannedSets; const actualReps = reps.length ? Math.min(...reps) : plannedReps;
+    const loadLabel = String(latest?.entry?.load || planned.loadLabel || '').trim();
+    const nextMorningClear = !shoulder || (latest?.recovery?.complete && Number(latest.recovery.pain || 0) === 0 && latest.recovery.status !== 'worse' && !latest.recovery.plateSymptoms);
+    const pain = Number(latest?.workout?.painDuring || 0); const symptoms = shoulder && (!nextMorningClear || pain > 3);
+    const completed = Boolean(latest?.entry?.done) && reps.length >= plannedSets && reps.slice(0, plannedSets).every(value => value >= plannedReps);
+    const quality = latest?.entry?.technique === 'clean' && Number(latest?.entry?.rir) >= 3 && Number(latest?.entry?.rir) <= 4;
+    const state = symptoms ? 'REGRESS' : baselineReady && completed && quality ? 'PROGRESS' : 'HOLD';
+    const seconds = /hold|hang|lsit|l-sit|pike|hollow/.test(id); let sets = plannedSets; let targetReps = plannedReps;
+    if (state === 'PROGRESS') targetReps = actualReps + (seconds ? 5 : 1);
+    if (state === 'REGRESS') { sets = Math.max(1, plannedSets - 1); targetReps = Math.max(1, actualReps - (seconds ? 5 : 2)); }
+    const tests = normalizeFitnessProfile(health.fitnessProfile).retests;
+    if (id === 're-mon-pullup' && tests.strictPullups !== null && Number.isFinite(Number(tests.strictPullups))) targetReps = Math.max(1, Math.min(targetReps, Number(tests.strictPullups) - 3));
+    if (id === 're-fri-pushup' && tests.pushups !== null && Number.isFinite(Number(tests.pushups))) targetReps = Math.max(1, Math.min(targetReps, Number(tests.pushups) - 3));
+    if (id === 're-thu-lsit' && tests.tuckLSitSeconds !== null && Number.isFinite(Number(tests.tuckLSitSeconds))) targetReps = Math.max(5, Math.min(targetReps, Number(tests.tuckLSitSeconds)));
+    const unit = seconds ? ' sec' : ''; const load = loadLabel ? ` · ${loadLabel}` : '';
+    const prescription = `${sets} × ${targetReps}${unit}${load} · keep 3–4 RIR`;
+    const reason = state === 'PROGRESS' ? 'All prescribed work was completed at 3–4 RIR with clean technique and no shoulder symptoms by the next morning; the week-1 retest baseline capped the next target.'
+      : state === 'REGRESS' ? 'Shoulder symptoms exceeded the rule or were not gone by the next morning, so volume is reduced and this exercise cannot progress.'
+      : !baselineReady ? 'Week-1 retests are incomplete, so week-3 progression is held until the new baseline is complete.'
+      : latest ? 'The latest logged sets, RIR, technique or recovery did not meet every progression rule, so the target is held.' : 'No re-entry sets were logged, so the target is held.';
+    return { state, reason, from: latest ? setSummary(latest.entry) : 'No re-entry sets logged', target: { ...planned, prescription, targetSets: sets, targetReps, loadLabel, variation: state.toLowerCase() }, prescription };
+  }
+  function generatePostReentryWeek(health, sourceWeekStart, goals) {
+    const nextWeekStart = addDays(sourceWeekStart, 7); const through = addDays(sourceWeekStart, 6); const fingerprint = sourceFingerprint(health, sourceWeekStart, goals); const signature = equipmentSignature(health);
+    const existing = health.generatedWeeks[nextWeekStart];
+    if (existing?.rulesVersion === RULES_VERSION && existing.sourceFingerprint === fingerprint && existing.equipmentSignature === signature) return health.weeklyReviews[sourceWeekStart] || null;
+    const baselineReady = reentryBaselineComplete(health); const tests = clone(normalizeFitnessProfile(health.fitnessProfile).retests); const days = {}; const items = [];
+    for (let index = 0; index < 7; index++) {
+      const sourcePlan = sourceWeekStart === '2026-11-30' ? reentryWeekTwo[index] : planFor(health, addDays(sourceWeekStart, index));
+      const base = clone(sourcePlan); base.title = base.title.replace(' · re-entry', '').replace(' re-entry', ''); delete base.retestFields;
+      if (sourceWeekStart === '2026-11-30') base.reentryPhase = 3; else delete base.reentryPhase;
+      base.ids = base.ids.filter(id => !id.includes('-test-'));
+      const overrides = {};
+      for (const id of base.ids) {
+        const planned = base.exerciseOverrides[id]; if (!planned) continue;
+        if (planned.group === 'Warm-up' || planned.group === 'Recovery' || planned.group === 'Easy conditioning' || planned.group === 'Shoulder prehab') { overrides[id] = planned; continue; }
+        const change = reentryProgressionTarget(health, through, id, planned, baselineReady); overrides[id] = change.target;
+        items.push({ id, name: planned.name, state: change.state, from: change.from, to: change.prescription, reason: change.reason, target: change.target });
+      }
+      base.exerciseOverrides = overrides; days[index] = base;
+      const key = addDays(nextWeekStart, index); const day = dayRecord(health, key);
+      if (!workoutStarted(day) && day.planSource !== 'schedule-swap') day.plan = clone(base);
+    }
+    const generatedAt = new Date().toISOString(); const weekLabel = sourceWeekStart === '2026-11-30' ? 'Week 3' : 'The next week'; const review = { sourceWeekStart, nextWeekStart, sourceFingerprint: fingerprint, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: signature, baselineReady, baselineReference: tests, goals: normalizeGoals(goals), items, summary: baselineReady ? `${weekLabel} uses the completed week-1 retests plus logged sets, RIR, technique and next-morning shoulder response.` : `${weekLabel} is prepared conservatively, but exercise progression is held because the week-1 retest baseline is incomplete.` };
+    health.generatedWeeks[nextWeekStart] = { sourceWeekStart, sourceFingerprint: fingerprint, generatedAt, rulesVersion: RULES_VERSION, equipmentSignature: signature, baselineReference: tests, days };
+    health.weeklyReviews[sourceWeekStart] = review; return review;
+  }
   function generateNextWeek(health, sourceStart, goals) {
     const sourceWeekStart = weekStart(sourceStart); const nextWeekStart = addDays(sourceWeekStart, 7);
+    if (sourceWeekStart >= '2026-11-30') return generatePostReentryWeek(health, sourceWeekStart, goals);
     if (sourceWeekStart < health.settings.programmeStart) return null;
     const sessions = sessionsInWeek(health, sourceWeekStart);
     const normalizedGoals = normalizeGoals(goals); const fingerprint = sourceFingerprint(health, sourceWeekStart, normalizedGoals); const signature = equipmentSignature(health);
@@ -862,14 +1091,32 @@
   function ensureInitialAdaptiveWeek(health) { return firstAdaptiveReview(health); }
   function ensureGeneratedWeeks(health, around = dateKey(), goals) { ensureInitialAdaptiveWeek(health); const start = weekStart(around); generateNextWeek(health, addDays(start, -7), goals); generateNextWeek(health, start, goals); }
 
+  function proteinTarget(health) {
+    const profile = normalizeFitnessProfile(health.fitnessProfile); const kg = profile.bodyweightKg || profile.bodyweightEstimateKg;
+    const practicalFiveGrams = value => Math.round(value / 5) * 5;
+    return { kg, verified: profile.bodyweightKg !== null && profile.bodyweightKg !== '' && Number.isFinite(Number(profile.bodyweightKg)), low: practicalFiveGrams(kg * 1.6), high: practicalFiveGrams(kg * 2) };
+  }
+  function trialAttendance(health) {
+    const weeks = ['2026-11-23', '2026-11-30'].map(start => {
+      const completed = Array.from({ length: 5 }, (_, i) => health.days[addDays(start, i)]?.workout?.complete).filter(Boolean).length;
+      return { start, completed, target: trainingTrialDefaults.keepIfSessionsPerWeek, passed: completed >= trainingTrialDefaults.keepIfSessionsPerWeek };
+    });
+    return { weeks, keep: weeks.every(week => week.passed), complete: dateKey() > trainingTrialDefaults.end };
+  }
+
   function shift(time, minutes) { const [h, m] = time.split(':').map(Number); const n = (h * 60 + m + minutes + 1440) % 1440; return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`; }
   function timeline(health, key) {
     const s = health.settings; const plan = planFor(health, key); const recoveryDue = dueRecoveryCheck(health, key);
+    const heatDay = s.saunaDays.includes(weekday(key)); const heatTime = shift(s.workout, plan.minutes + 5); const showerTime = shift(s.workout, plan.minutes + (heatDay ? 25 : 5));
     return [
       { id: 'water', time: s.wake, title: 'Wake + water', minutes: 5, kind: 'routine' }, ...(recoveryDue ? [{ id: 'shoulder-check', time: shift(s.wake, 5), title: 'Shoulder recovery check-in', minutes: 2, kind: 'checkin' }] : []),
-      { id: 'light', time: shift(s.wake, 10), title: 'Outside light + walk', minutes: 10, kind: 'routine' }, { id: 'warmup', time: shift(s.workout, -10), title: 'Gentle warm-up', minutes: 10, kind: 'routine' }, { id: 'workout', time: s.workout, title: plan.title, minutes: plan.minutes, kind: plan.kind }, { id: 'shower', time: shift(s.workout, plan.minutes + 5), title: 'Shower + moisturise', minutes: 15, kind: 'routine' }, { id: 'breakfast', time: shift(s.workout, plan.minutes + 20), title: 'Breakfast + daily creatine', minutes: 20, kind: 'routine' }, { id: 'meditation', time: shift(s.work, -10), title: 'Meditation', minutes: 10, kind: 'routine' }, { id: 'work', time: s.work, title: 'Deep work', minutes: 90, kind: 'focus' },
-      ...(weekday(key) < 5 ? s.movementTimes.map(t => ({ id: `move-${t}`, time: t, title: t === s.movementTimes[1] ? 'Post-lunch walk' : 'Movement break', minutes: t === s.movementTimes[1] ? 10 : 5, kind: 'movement' })) : []), ...(s.saunaDays.includes(weekday(key)) ? [{ id: 'sauna', time: s.saunaTime, title: 'Optional sauna', minutes: 10, kind: 'sauna' }] : []), { id: 'winddown', time: s.windDown, title: 'Wind down', minutes: 30, kind: 'rest' }, { id: 'bedtime', time: s.bedtime, title: 'Target bedtime', minutes: 0, kind: 'rest' }
-    ].filter(e => !plan.pending || !['workout', 'warmup'].includes(e.id)).sort((a, b) => a.time.localeCompare(b.time));
+      { id: 'light', time: shift(s.wake, 10), title: 'Outside light + walk', minutes: 10, kind: 'routine' }, { id: 'meditation', time: shift(s.work, -10), title: 'Meditation', minutes: 10, kind: 'routine' }, { id: 'work', time: s.work, title: 'Laptop work', minutes: 180, kind: 'focus' },
+      ...(weekday(key) < 5 ? [{ id: 'porridge', time: '12:00', title: 'Protein porridge + creatine', minutes: 20, kind: 'routine' }, { id: 'deliveries', time: '13:00', title: 'Deliveries · peak 13:00–15:00', minutes: 120, kind: 'focus' }] : []),
+      { id: 'warmup', time: shift(s.workout, -10), title: 'Gentle warm-up', minutes: 10, kind: 'routine' }, { id: 'workout', time: s.workout, title: plan.title, minutes: plan.minutes, kind: plan.kind },
+      ...(heatDay && plan.kind !== 'rest' ? [{ id: 'sauna', time: heatTime, title: 'Optional sauna / steam · after training only', minutes: 10, kind: 'sauna' }] : []),
+      { id: 'shower', time: showerTime, title: 'Shower + moisturise', minutes: 15, kind: 'routine' },
+      ...(weekday(key) < 5 ? s.movementTimes.map(t => ({ id: `move-${t}`, time: t, title: 'Movement break', minutes: 5, kind: 'movement' })) : []), { id: 'winddown', time: s.windDown, title: 'Wind down', minutes: 30, kind: 'rest' }, { id: 'bedtime', time: s.bedtime, title: 'Target bedtime', minutes: 0, kind: 'rest' }
+    ].filter(e => (!plan.pending || !['workout', 'warmup'].includes(e.id)) && (plan.kind !== 'rest' || !['workout', 'warmup', 'shower'].includes(e.id))).sort((a, b) => a.time.localeCompare(b.time));
   }
   function recoveryMessage(r = {}, cleared = false) {
     if (r.redFlag) return 'Stop training and seek medical assessment for sharp plate-site pain, new weakness or swelling.';
@@ -893,6 +1140,6 @@
     for (let i = 0; i < days; i++) { const key = addDays(from, i); for (const e of timeline(health, key)) { const start = new Date(`${key}T${e.time}:00`); const end = new Date(start.getTime() + Math.max(5, e.minutes) * 60000); const local = d => `${dateKey(d).replaceAll('-', '')}T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00`; lines.push('BEGIN:VEVENT', `UID:${key}-${e.id.replace(':', '')}@movestrong.local`, `DTSTAMP:${stamp}`, `DTSTART:${local(start)}`, `DTEND:${local(end)}`, `SUMMARY:${e.title}`, 'DESCRIPTION:Personal schedule. Adjust to your agreed health and training limits.'); if (['movement', 'sauna', 'checkin'].includes(e.kind)) lines.push('BEGIN:VALARM', 'TRIGGER:PT0S', 'ACTION:DISPLAY', `DESCRIPTION:${e.title}`, 'END:VALARM'); lines.push('END:VEVENT'); } }
     lines.push('END:VCALENDAR'); return lines.join('\r\n') + '\r\n';
   }
-  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, normalizeGoals, mergeHealth, mergeCloud, dayRecord, plans, planFor, setWorkoutStatus, shiftPlannedSession, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, longitudinalHistory, skillPathways, weeklyReviewSnapshot, dailyReviewSnapshot, storeReviewedDraft, approveReviewedDraft, storeDailyReviewedPlan, activateDailyReviewedPlan, revalidateDailyPlanForRecovery, isShoulderLoading, exerciseEquipment };
+  const api = { dateKey, date, addDays, weekday, weekStart, defaults, normalize, normalizeEquipment, normalizeGymEquipment, normalizeEquipmentProfiles, normalizeFitnessProfile, equipmentForProfile, planEquipment, proteinTarget, trialAttendance, reentryBaselineComplete, mergeHealth, mergeCloud, dayRecord, plans, planFor, setWorkoutStatus, shiftPlannedSession, timeline, recoveryMessage, dueRecoveryCheck, recoveryForWorkout, dueReminders, calendarExport, decideExercise, generateNextWeek, ensureGeneratedWeeks, longitudinalHistory, skillPathways, weeklyReviewSnapshot, dailyReviewSnapshot, storeReviewedDraft, approveReviewedDraft, storeDailyReviewedPlan, activateDailyReviewedPlan, revalidateDailyPlanForRecovery, isShoulderLoading, exerciseEquipment };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.HealthModel = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -1,22 +1,28 @@
 # Move Strong Rehab
 
-A local-first six-week Progressive Web App (PWA) containing the six-day Strength Side-inspired movement and post-clavicle-ORIF strengthening plan, now with gym and travel-friendly home-kit options plus calisthenics-skill, running and muscle-up-readiness tracking.
+A local-first Progressive Web App (PWA) for post-clavicle-ORIF training, recovery and progression. The dated plan now reflects the confirmed 23 November 2026 fitness profile while retaining the original six-week programme and every existing log.
 
 ## Included
 
-- Six training days, each with a 10- or 20-minute morning session, a longer gym evening session, and a home-kit replacement session for travel days
+- A 23 November–4 December 2026 trial of weekday 15:00–16:30 training, with attendance evaluated against four of five sessions per week
+- The current week structure: Monday pull + core, Tuesday heavy lower body, Wednesday easy swim + shoulder prehab, Thursday push + handstand/L-sit skills, Friday light full body at home, Saturday long easy run, Sunday rest
+- A date-locked re-entry block: week 1 at about 60% volume and 3–4 RIR, week 2 with one added set on main lifts, then data-driven progression from week 3
+- Week-1 retests for strict pull-ups, dead hang, push-ups, tuck L-sit and an easy 5 km with chest response; the saved results become the progression baseline
 - Text technique cues and clavicle-specific precautions
 - Tap-to-open detailed exercise technique guides
 - Exercise-specific Bob & Brad X6 Ultra guidance inside each workout, with conservative timing, speed, heat and clavicle-plate safety limits
 - Text-only exercise cards and guides, without exercise-mimicking pictures or animations
 - Sets, repetitions, loads/levels, per-exercise RIR, technique quality and exercise-completion tracking
 - Rest timer
-- Editable home-equipment profile for bands, pull-up bar, rowing machine, individual dumbbell loads, and kettlebell loads
+- Separate editable home and Nuffield Health Friern Barnet gym profiles; each session names the profile it uses
+- Explicit unverified gym flags for squat rack, cable station, assisted pull-up/dip machine and rings
 - Skill tabs for pull-up practice, active hangs, hollow holds, straight-bar support and muscle-up prerequisites
 - Run tabs for easy run/walk, Zone 2 run/walk and controlled intervals
 - Goals page for muscle-up readiness and running benchmarks
 - Pain-during, pain-after and required-for-progression next-morning shoulder response tracking
 - Cardio breathing/asthma symptom and reliever-use tracking
+- A prompted gym weigh-in and protein target recalculated from verified bodyweight; the current 65 kg estimate produces a practical 105–130 g/day target
+- Recovery guidance for post-training sauna/steam, asthma and eczema tolerance, hydration, and avoiding an immediate post-strength cold plunge
 - Deterministic PROGRESS / HOLD / REGRESS weekly reviews with a reason for every change
 - Optional private Codex daily review using all-history trends, the latest 14 detailed days, goals and user-entered notes, with automatic fingerprint-validated activation of tomorrow
 - Equipment-aware prescriptions that use an owned load or a specific reps, tempo, pause, 1.5-rep, assistance, or leverage progression—never a generic “next available load”

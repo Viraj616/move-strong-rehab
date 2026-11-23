@@ -374,7 +374,7 @@ test('stale v1 generated weeks refresh before the following week is started', ()
   M.ensureGeneratedWeeks(data, '2026-10-12');
   const after = M.planFor(data, '2026-10-12');
   assert.ok(after.exerciseOverrides['d3e-row']);
-  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 8);
+  assert.equal(data.generatedWeeks['2026-10-12'].rulesVersion, 9);
 });
 
 test('started days are preserved while later days of a refreshed week can update', () => {
@@ -470,15 +470,15 @@ test('cloud merge does not let an older device invent equipment over an explicit
 });
 test('reminders respect weekday, completion, snooze, stale alerts and recent activity', () => {
   const data = M.defaults(); data.settings.reminders = true;
-  const now = new Date('2026-09-14T11:01:00');
-  assert.equal(M.dueReminders(data, now)[0].id, 'move-11:00');
+  const now = new Date('2026-09-14T10:31:00');
+  assert.equal(M.dueReminders(data, now)[0].id, 'move-10:30');
   const day = M.dayRecord(data, '2026-09-14'); day.lastMovementAt = '2026-09-14T10:40:00';
   assert.equal(M.dueReminders(data, now).length, 0);
   delete day.lastMovementAt;
-  data.reminderState['2026-09-14/move-11:00'] = { snoozeUntil: '2026-09-14T11:31:00' };
+  data.reminderState['2026-09-14/move-10:30'] = { snoozeUntil: '2026-09-14T11:01:00' };
   assert.equal(M.dueReminders(data, now).length, 0);
-  assert.equal(M.dueReminders(data, new Date('2026-09-14T11:32:00')).length, 1);
-  data.reminderState['2026-09-14/move-11:00'] = { done: true };
+  assert.equal(M.dueReminders(data, new Date('2026-09-14T11:02:00')).length, 1);
+  data.reminderState['2026-09-14/move-10:30'] = { done: true };
   assert.equal(M.dueReminders(data, now).length, 0);
   assert.equal(M.dueReminders(data, new Date('2026-09-19T11:01:00')).length, 0);
   assert.equal(M.dueReminders(data, new Date('2026-09-15T11:45:00')).length, 0);
@@ -491,10 +491,10 @@ test('recovery never treats missing pain as clearance; flags take precedence', (
   assert.match(M.recoveryMessage({ shoulder: '4' }, true), /Reduce shoulder/);
 });
 test('calendar contains independent dated events and movement alarms', () => {
-  const calendar = M.calendarExport(M.defaults(), '2026-09-14', 7);
-  assert.match(calendar, /DTSTART:20260914T110000/);
+  const calendar = M.calendarExport(M.defaults(), '2026-11-23', 7);
+  assert.match(calendar, /DTSTART:20261123T103000/);
   assert.match(calendar, /BEGIN:VALARM\r\nTRIGGER:PT0S/);
-  assert.equal((calendar.match(/SUMMARY:Optional sauna/g) || []).length, 2);
+  assert.equal((calendar.match(/SUMMARY:Optional sauna \/ steam/g) || []).length, 1);
   const ids = [...calendar.matchAll(/UID:(.+)/g)].map(m => m[1]);
   assert.equal(new Set(ids).size, ids.length);
 });
@@ -516,7 +516,7 @@ test('meditation follows work time and programme starts without altering history
  assert.equal(M.planFor(data, '2026-09-21').short, 'Pull');
  assert.equal(M.timeline(data, '2026-09-20').some(e => e.id === 'workout'), false);
  let meditation = M.timeline(data, '2026-09-21').find(e => e.id === 'meditation');
- assert.equal(meditation.time, '08:50'); assert.equal(meditation.minutes, 10);
+ assert.equal(meditation.time, '08:20'); assert.equal(meditation.minutes, 10);
  data.settings.work = '10:30';
  assert.equal(M.timeline(data, '2026-09-21').find(e => e.id === 'meditation').time, '10:20');
  M.dayRecord(data, '2026-09-14').workout.complete = true;
@@ -525,4 +525,53 @@ test('meditation follows work time and programme starts without altering history
  assert.equal(JSON.stringify(data.days), before);
  delete data.settings.programmeStart;
  assert.equal(M.normalize(data).settings.programmeStart, '2026-09-21');
+});
+
+test('confirmed November profile provides the trial schedule and separate home and gym equipment profiles', () => {
+  const data = M.defaults();
+  assert.equal(data.settings.workout, '15:00');
+  assert.deepEqual(data.settings.trainingTrial, { start: '2026-11-23', end: '2026-12-04', weekdayStart: '15:00', weekdayEnd: '16:30', keepIfSessionsPerWeek: 4, status: 'trial' });
+  assert.equal(data.fitnessProfile.bodyweightEstimateKg, 65);
+  assert.equal(data.fitnessProfile.bodyweightKg, null);
+  assert.equal(data.fitnessProfile.strictPullupsMin, 3);
+  assert.equal(data.fitnessProfile.strictPullupsMax, 4);
+  assert.equal(data.settings.equipmentProfiles.gym.facility, 'Nuffield Health Friern Barnet');
+  assert.equal(data.settings.equipmentProfiles.gym.verification.squatRack, null);
+  assert.equal(data.settings.equipmentProfiles.gym.verification.cableStation, null);
+  assert.equal(data.settings.equipmentProfiles.gym.verification.assistedPullupDipMachine, null);
+  assert.equal(data.settings.equipmentProfiles.gym.verification.rings, null);
+});
+
+test('date-locked re-entry weeks use exact profiles, Friday fallback and week-two main-lift volume', () => {
+  const data = M.defaults();
+  const monday = M.planFor(data, '2026-11-23'); const friday = M.planFor(data, '2026-11-27'); const saturday = M.planFor(data, '2026-11-28'); const sunday = M.planFor(data, '2026-11-29');
+  assert.equal(monday.equipmentProfile, 'gym');
+  assert.deepEqual(monday.retestFields, ['strictPullups', 'deadHangSeconds']);
+  assert.match(monday.exerciseOverrides['re-mon-pullup'].prescription, /^4 × 2/);
+  assert.equal(friday.equipmentProfile, 'home'); assert.equal(friday.fridayFallback, true);
+  assert.equal(saturday.title, 'Long easy run · 5 km'); assert.equal(sunday.kind, 'rest');
+  const weekTwo = M.planFor(data, '2026-11-30');
+  assert.equal(weekTwo.reentryPhase, 2);
+  assert.equal(weekTwo.exerciseOverrides['re-mon-pullup'].targetSets, 5);
+  assert.equal(weekTwo.exerciseOverrides['re-mon-pulldown'].targetSets, 4);
+});
+
+test('verified weight recalculates protein and completed week-one retests drive week-three progression', () => {
+  const data = M.defaults();
+  assert.deepEqual(M.proteinTarget(data), { kg: 65, verified: false, low: 105, high: 130 });
+  data.fitnessProfile.retests.chestFeel = 'clear';
+  assert.equal(M.reentryBaselineComplete(data), false);
+  data.fitnessProfile.bodyweightKg = 70; data.fitnessProfile.bodyweightVerifiedAt = '2026-11-24T16:00:00Z';
+  Object.assign(data.fitnessProfile.retests, { strictPullups: 4, deadHangSeconds: 35, pushups: 16, tuckLSitSeconds: 18, easy5kMinutes: 31.5, chestFeel: 'clear', completedAt: '2026-11-28T12:00:00Z' });
+  assert.deepEqual(M.proteinTarget(data), { kg: 70, verified: true, low: 110, high: 140 });
+  assert.equal(M.reentryBaselineComplete(data), true);
+  const monday = M.dayRecord(data, '2026-11-30'); monday.plan = M.planFor(data, '2026-11-30');
+  monday.workout = { complete: true, painDuring: '2', effort: '6', exercises: { 're-mon-pullup': { done: true, sets: ['2', '2', '2', '2', '2'], load: 'bodyweight', rir: '3', technique: 'clean' } }, updatedAt: '2026-11-30T17:00:00Z' };
+  M.dayRecord(data, '2026-12-01').recovery.previousWorkout = { workoutDate: '2026-11-30', pain: '0', status: 'same', complete: true };
+  const review = M.generateNextWeek(data, '2026-11-30');
+  assert.equal(review.baselineReady, true); assert.equal(review.baselineReference.strictPullups, 4);
+  assert.equal(M.planFor(data, '2026-12-07').equipmentProfile, 'gym');
+  assert.equal(M.planFor(data, '2026-12-11').equipmentProfile, 'home');
+  assert.equal(M.planFor(data, '2026-12-07').ids.some(id => id.includes('-test-')), false);
+  assert.equal(M.planFor(data, '2026-12-07').exerciseOverrides['re-mon-pullup'].targetReps, 1, 'baseline max minus 3 caps pull-up work at 3–4 RIR');
 });

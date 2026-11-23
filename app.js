@@ -1,6 +1,6 @@
 /* Move Strong Rehab — local-first six-week programme */
 
-const APP_VERSION = '3.11.0';
+const APP_VERSION = '3.12.2';
 const STORAGE_KEY = 'moveStrongRehabStateV1';
 
 const ex = (id, name, prescription, sets, unit, diagram, cues, rehab, group = 'Main work', videoQuery = '') => ({
@@ -285,6 +285,48 @@ const HOME_SESSIONS = [
   }
 ];
 
+const reEx = (id, name, prescription, sets, unit, diagram, group = 'Main work', rehab = '') => ex(
+  id, name, prescription, sets, unit, diagram,
+  ['Use a controlled range and clean technique.', 'Finish every work set with 3–4 reps in reserve.', 'Record the load or assistance actually used.'],
+  rehab || 'Pain up to 3/10 is acceptable only if it is gone by the next morning. Otherwise regress and do not progress.', group
+);
+
+const REENTRY_EXERCISES = [
+  reEx('re-mon-rower', 'Rower warm-up', '5 min easy', 1, 'min', 'cardio', 'Warm-up', 'Build gradually and keep the shoulder relaxed. Use a bike if rowing is not comfortable.'),
+  reEx('re-mon-pullapart', 'Band pull-apart', '2 × 15', 2, 'reps', 'pull', 'Warm-up'),
+  reEx('re-mon-scap', 'Scapular pull-up', '2 × 5', 2, 'reps', 'hang', 'Warm-up', 'Keep elbows straight and the range small. Stop for focal plate or front-shoulder pain.'),
+  reEx('re-mon-test-pullup', 'TEST · max strict pull-ups', 'One controlled max set', 1, 'reps', 'pull', 'Baseline test', 'Stop when the next rep would lose strict form. Rest five minutes before work sets.'),
+  reEx('re-mon-pullup', 'Strict pull-up', '4 × 2', 4, 'reps', 'pull'),
+  reEx('re-mon-pulldown', 'Lat pulldown', '3 × 10', 3, 'reps', 'pulldown'),
+  reEx('re-mon-cablerow', 'Seated cable row', '3 × 10', 3, 'reps', 'row'),
+  reEx('re-mon-facepull', 'Face pull', '2 × 15 light', 2, 'reps', 'pull', 'Accessory'),
+  reEx('re-mon-deadbug', 'Dead bug', '3 × 8 each side', 3, 'reps', 'deadbug', 'Core'),
+  reEx('re-tue-warm', 'Bike + movement warm-up', '5 min bike, squats, glute bridges', 1, 'round', 'cardio', 'Warm-up'),
+  reEx('re-tue-squat', 'Goblet or back squat', '3 × 8', 3, 'reps', 'squat', 'Main lift', 'Find a conservative load. Do not let a bar or pad press on the clavicle plate.'),
+  reEx('re-tue-rdl', 'Dumbbell Romanian deadlift', '3 × 8', 3, 'reps', 'hinge', 'Main lift'),
+  reEx('re-tue-bss', 'Bulgarian split squat', '2 × 8 each leg', 2, 'reps', 'lunge', 'Main lift'),
+  reEx('re-tue-legcurl', 'Leg curl', '2 × 10', 2, 'reps', 'legmachine', 'Accessory'),
+  reEx('re-tue-calf', 'Calf raise', '3 × 12', 3, 'reps', 'standing', 'Accessory'),
+  reEx('re-wed-swim', 'Easy swim', '20–30 min easy', 1, 'min', 'cardio', 'Easy conditioning', 'Keep the pace easy and choose strokes that feel smooth through the operated shoulder.'),
+  reEx('re-wed-er', 'Band external rotation', '2 × 15', 2, 'reps', 'band', 'Shoulder prehab'),
+  reEx('re-wed-ytw', 'Y–T–W', '2 × 8 each position', 2, 'reps', 'yraise', 'Shoulder prehab'),
+  reEx('re-wed-heat', 'Optional sauna or steam', '10 min max after training', 1, 'min', 'cardio', 'Recovery', 'After training only. Prefer dry sauna with asthma; leave if chest or skin symptoms build, then shower, moisturise and rehydrate.'),
+  reEx('re-thu-warm', 'Wrist + shoulder warm-up', 'Wrist prep, band dislocates, scap push-ups 2 × 10', 2, 'reps', 'wallpush', 'Warm-up'),
+  reEx('re-thu-test-pushup', 'TEST · max push-ups', 'One controlled max set', 1, 'reps', 'pushup', 'Baseline test', 'Stop before form or shoulder symmetry breaks; do not grind to failure.'),
+  reEx('re-thu-test-lsit', 'TEST · max tuck L-sit', 'One controlled max hold', 1, 'sec', 'support', 'Baseline test', 'Stop when the shoulders shrug, elbows bend or hip position is lost.'),
+  reEx('re-thu-bench', 'Dumbbell bench press', '3 × 10', 3, 'reps', 'press', 'Main lift'),
+  reEx('re-thu-press', 'Light dumbbell shoulder press', '2 × 10', 2, 'reps', 'press', 'Main lift'),
+  reEx('re-thu-dip', 'Assisted dip', '2 × 6', 2, 'reps', 'dip', 'Main lift', 'Stop immediately for front-of-shoulder pain. Use machine, band or feet assistance that preserves 3–4 RIR.'),
+  reEx('re-thu-pike', 'Wall pike hold', '3 × 20 sec', 3, 'sec', 'support', 'Skill'),
+  reEx('re-thu-lsit', 'Tuck L-sit', '3 × 10 sec', 3, 'sec', 'support', 'Skill'),
+  reEx('re-fri-row', 'Inverted row', '3 × 8', 3, 'reps', 'row', 'Main lift', 'Use a genuinely secure home anchor. If none is available, use a band row and record the substitution.'),
+  reEx('re-fri-squat', 'Kettlebell goblet squat', '2 × 12', 2, 'reps', 'squat', 'Main lift', 'Keep Friday light to protect Saturday’s run. Hold the bell below the plate area.'),
+  reEx('re-fri-pushup', 'Push-up', '2 × 10', 2, 'reps', 'pushup', 'Main lift'),
+  reEx('re-fri-bridge', 'Single-leg glute bridge', '2 × 10 each leg', 2, 'reps', 'hinge', 'Accessory'),
+  reEx('re-fri-hollow', 'Hollow hold', '3 × 20 sec', 3, 'sec', 'hollow', 'Core'),
+  reEx('re-sat-run', 'Easy 5 km run', '5 km conversational pace', 1, 'km', 'run', 'Easy conditioning', 'Warm up gradually, keep the reliever available, and stop or walk if chest tightness or wheeze builds.')
+];
+
 const TRANSITION_SESSIONS = {
   2: {
     run: {
@@ -416,7 +458,7 @@ function loadState() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !parsed.logs || Array.isArray(parsed.logs)) throw new Error('Invalid stored state');
     if (parsed.healthOS) {
-      healthMigrationPending = parsed.healthOS.schemaVersion !== 4;
+      healthMigrationPending = parsed.healthOS.schemaVersion !== 4 || parsed.healthOS.settings?.confirmedFitnessUpdate !== '2026-11-23';
       parsed.healthOS = HealthModel.normalize(parsed.healthOS);
     }
     const base = defaultState();

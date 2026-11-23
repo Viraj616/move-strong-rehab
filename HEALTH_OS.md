@@ -1,6 +1,14 @@
-# Move Strong 3.11
+# Move Strong 3.12.2
 
-The app opens on a dated Today timeline, with a morning routine, scheduled training, movement breaks, optional sauna and bedtime. Week shows only committed current or generated plans; speculative month views are deliberately omitted. Log offers the dated programme, text-only technique guidance, set logging and previous results without exercise-mimicking imagery. Recovery logs sleep, shoulder symptoms, energy, breathing and sauna/skin response. Review explains daily adaptations and derives skill pathways automatically from recorded performance and recovery. You contains schedule, sync and backup preferences.
+The app opens on a dated Today timeline, with laptop work in the morning, a 13:00–15:00 delivery peak, training at 15:00, movement breaks, optional post-training heat and bedtime. Week shows only committed current or generated plans; speculative month views are deliberately omitted. Log offers the dated programme, text-only technique guidance, set logging and previous results without exercise-mimicking imagery. Recovery logs sleep, shoulder symptoms, energy, breathing and sauna/skin response. Review explains daily adaptations and derives skill pathways automatically from recorded performance and recovery. You contains the confirmed fitness profile, schedule, equipment profiles, nutrition, recovery, sync and backup preferences.
+
+## Confirmed profile and re-entry block
+
+The confirmed update is effective 23 November 2026. Weekdays use a trial 15:00–16:30 slot through 4 December, retained when at least four of five weekday sessions are completed in each trial week. Friday is always a home-profile fallback for delivery overruns; Saturday is a long easy run and Sunday is rest. The stored current baseline is two weeks off training, 3–4 strict pull-ups, about 15 push-ups, shoulder feeling fine and an unverified 65 kg estimate. A gym weigh-in prompt stores a verified value and recalculates the practical 1.6–2.0 g/kg protein range in 5 g increments (105–130 g at 65 kg).
+
+Week 1 is fixed at about 60% of normal volume and 3–4 RIR. Week 2 adds one set to each main lift at the same reps, about 80% volume. Week 3 onwards uses the logged sets, RIR, technique and symptom response plus the saved week-1 retests: max strict pull-ups, dead hang, max push-ups, max tuck L-sit, easy 5 km time and chest response. Progress requires all prescribed work at target RIR without shoulder symptoms; pain above 3/10 or pain not gone by the next morning forces regression and prevents progression.
+
+Each dated session carries either the home or gym equipment profile. The gym profile assumes standard free weights, dumbbells, cables and machines at Nuffield Health Friern Barnet, while squat rack, cable station, assisted pull-up/dip machine and rings remain explicitly unverified until confirmed in You. Pool, sauna, steam room and on-site physio are recorded as reported facilities, not independently verified inventory. Heat is optional after training only: prefer dry sauna if asthma tolerates it, shower and moisturise promptly for eczema, hydrate afterwards and do not use an immediate post-strength cold plunge.
 
 ## Data compatibility
 
