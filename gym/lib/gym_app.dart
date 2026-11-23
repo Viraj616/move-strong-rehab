@@ -591,8 +591,9 @@ class _SessionState extends State<Session> {
                 children: [
                   for (final t in ['sauna', 'steam'])
                     TextButton(
-                      onPressed: () =>
-                          setState(() => log['heat'].add({'type': t})),
+                      onPressed: () => setState(
+                        () => log['heat'].add(<String, dynamic>{'type': t}),
+                      ),
                       child: Text('Add $t'),
                     ),
                 ],

@@ -449,6 +449,18 @@ String? rejectSuggestion(Row suggestion, List<Row> targets) {
 }
 
 Map<String, dynamic> migrate(Row backup) {
+  if (backup['format'] == 'move-strong.history.v1') {
+    final history = backup['history'];
+    if (history is! Row ||
+        history.keys.any(
+          (k) =>
+              !k.startsWith('legacy/') &&
+              !k.startsWith('dated/') &&
+              !k.startsWith('snapshot/'),
+        ))
+      throw const FormatException('Invalid history archive');
+    return Map.of(history);
+  }
   final state = backup['state'] ?? backup;
   if (state['logs'] is! Map && state['healthOS']?['days'] is! Map)
     throw const FormatException('Expected Move Strong backup');
