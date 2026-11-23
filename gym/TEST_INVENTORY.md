@@ -1,5 +1,7 @@
 # Test inventory
 
+- **full backup survives export and restore into a fresh installation** exercises both backup controls and compares sessions, heat, baseline, history, weight, reminder and import state after a round trip using a simulated document picker.
+
 Flutter rebuild tests have individual assertion summaries below. Earlier web and server tests are grouped by source. Their descriptive test titles identify the checked behavior. Browser scripts are listed by filename and coverage.
 
 
