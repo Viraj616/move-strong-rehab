@@ -1,4 +1,4 @@
-package com.example.move_strong
+package com.viraj.movestrong
 
 import io.flutter.embedding.android.FlutterActivity
 
@@ -10,8 +10,27 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.Calendar
 
 class MainActivity : FlutterActivity() {
+    private var exportResult: MethodChannel.Result? = null
+    private var exportText: String? = null
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        MethodChannel(engine.dartExecutor.binaryMessenger,"move_strong/backup").setMethodCallHandler { call, result ->
+            if(call.method !in listOf("export","restore")){ result.notImplemented(); return@setMethodCallHandler }
+            if(exportResult != null){ result.error("busy","Another export is open",null); return@setMethodCallHandler }
+            exportResult=result
+            if(call.method=="restore"){
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE);type="application/json"
+                },712)
+                return@setMethodCallHandler
+            }
+            exportText=call.arguments as String
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type="application/json"
+                putExtra(Intent.EXTRA_TITLE,"move-strong-backup-"+System.currentTimeMillis()+".json")
+            }, 711)
+        }
         MethodChannel(engine.dartExecutor.binaryMessenger,"move_strong/reminder").setMethodCallHandler { call, result ->
             if(call.method != "schedule") { result.notImplemented(); return@setMethodCallHandler }
             val minutes = call.arguments as Int
@@ -20,6 +39,24 @@ class MainActivity : FlutterActivity() {
             WorkoutReminder.schedule(this,minutes)
             result.success(null)
         }
+    }
+    override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
+        super.onActivityResult(requestCode,resultCode,data)
+        if(requestCode!=711 && requestCode!=712)return
+        val reply=exportResult ?: return
+        try {
+            val uri=data?.data
+            if(resultCode!=RESULT_OK || uri==null){reply.success(false);return}
+            if(requestCode==712){
+                val stream=contentResolver.openInputStream(uri) ?: error("Cannot read backup")
+                reply.success(stream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+                return
+            }
+            val stream=contentResolver.openOutputStream(uri,"wt") ?: error("Cannot open backup destination")
+            stream.bufferedWriter(Charsets.UTF_8).use { it.write(requireNotNull(exportText)) }
+            reply.success(true)
+        }catch(e:Exception){reply.error("backup_failed",e.localizedMessage,null)}
+        finally{exportResult=null;exportText=null}
     }
 }
 

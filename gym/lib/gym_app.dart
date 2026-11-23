@@ -85,6 +85,101 @@ class _GymState extends State<GymApp> {
     );
   }
 
+  static const backupChannel = MethodChannel('move_strong/backup');
+  Future<void> backup(bool restore) async {
+    try {
+      if (restore) {
+        final picked = await backupChannel.invokeMethod('restore');
+        if (picked is! String) return;
+        final b = jsonDecode(picked);
+        if (b is! Map || b['format'] != 'move-strong.full.v1')
+          throw const FormatException('Expected a Move Strong full backup');
+        final restored = List<Row>.from(b['logs']);
+        final restoredHistory = Map<String, dynamic>.from(b['history']);
+        final restoredBaseline = Map<String, dynamic>.from(b['baseline']);
+        final weight = (b['kg'] as num).toDouble();
+        final minutes = b['reminderMinutes'] as int?;
+        if (!weight.isFinite ||
+            weight < 25 ||
+            weight > 300 ||
+            (minutes != null && (minutes < 0 || minutes >= 1440)) ||
+            restored.any(
+              (r) => r['date'] is! String || r['exercises'] is! List,
+            ))
+          throw const FormatException('Invalid backup records');
+        if (!mounted) return;
+        final accept = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: const Text('Restore backup?'),
+            content: Text(
+              'Merge ${restored.length} sessions and ${restoredHistory.length} history entries. This device keeps matching sessions and history. Restore the saved weight and reminder settings.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('Restore'),
+              ),
+            ],
+          ),
+        );
+        if (accept != true) return;
+        logs = {
+          for (final r in [...restored, ...logs]) r['date']: r,
+        }.values.toList();
+        history = {...restoredHistory, ...history};
+        baseline = {...restoredBaseline, ...baseline};
+        kg = weight;
+        await save();
+        await const MethodChannel(
+          'move_strong/reminder',
+        ).invokeMethod('schedule', minutes ?? -1);
+        if (minutes == null) {
+          await prefs.remove('reminderMinutes');
+          await prefs.remove('reminder');
+        } else {
+          await prefs.setInt('reminderMinutes', minutes);
+          await prefs.setString(
+            'reminder',
+            b['reminder'] ??
+                '${minutes ~/ 60}:${(minutes % 60).toString().padLeft(2, '0')}',
+          );
+        }
+        if (b['historyImported'] == true)
+          await prefs.setBool('historyImported', true);
+        if (mounted) setState(() {});
+      } else {
+        final text = jsonEncode({
+          'format': 'move-strong.full.v1',
+          'exportedAt': DateTime.now().toUtc().toIso8601String(),
+          'logs': logs,
+          'history': history,
+          'baseline': baseline,
+          'kg': kg,
+          'reminder': prefs.getString('reminder'),
+          'reminderMinutes': prefs.getInt('reminderMinutes'),
+          'historyImported': prefs.getBool('historyImported') ?? false,
+        });
+        if (await backupChannel.invokeMethod('export', text) != true) return;
+      }
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(restore ? 'Backup restored' : 'Backup file saved'),
+          ),
+        );
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Backup operation failed: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!ready)
@@ -205,6 +300,17 @@ class _GymState extends State<GymApp> {
                 ),
               ]
             : [
+                if (!kIsWeb &&
+                    defaultTargetPlatform == TargetPlatform.android) ...[
+                  ListTile(
+                    title: const Text('Export all data'),
+                    onTap: () => backup(false),
+                  ),
+                  ListTile(
+                    title: const Text('Restore full backup'),
+                    onTap: () => backup(true),
+                  ),
+                ],
                 if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
                   ListTile(
                     title: const Text('Workout reminder'),
@@ -216,6 +322,7 @@ class _GymState extends State<GymApp> {
                           'move_strong/reminder',
                         ).invokeMethod('schedule', -1);
                         await prefs.remove('reminder');
+                        await prefs.remove('reminderMinutes');
                         setState(() {});
                       },
                     ),
@@ -230,6 +337,10 @@ class _GymState extends State<GymApp> {
                         'move_strong/reminder',
                       ).invokeMethod('schedule', t.hour * 60 + t.minute);
                       await prefs.setString('reminder', label);
+                      await prefs.setInt(
+                        'reminderMinutes',
+                        t.hour * 60 + t.minute,
+                      );
                       setState(() {});
                     },
                   ),
