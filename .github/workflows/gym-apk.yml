@@ -38,6 +38,9 @@ jobs:
           echo "::add-mask::$APK_PASSWORD"
           export APK_PASSWORD
           unset SIGNING
+          APK_KEY_ALIAS=$(keytool -J-Duser.language=en -list -v -storetype PKCS12 -keystore "$APK_KEYSTORE" -storepass:env APK_PASSWORD | sed -n 's/^Alias name: //p')
+          test -n "$APK_KEY_ALIAS"
+          export APK_KEY_ALIAS
           flutter build apk --release --no-pub --no-tree-shake-icons --build-number="$GITHUB_RUN_NUMBER" --build-name="1.0.$GITHUB_RUN_NUMBER"
           cp build/app/outputs/flutter-apk/app-release.apk Move-Strong.apk
           tools=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)

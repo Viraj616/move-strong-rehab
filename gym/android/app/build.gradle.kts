@@ -34,7 +34,7 @@ android {
             System.getenv("APK_KEYSTORE")?.let { storeFile = file(it) }
             storeType = "PKCS12"
             storePassword = System.getenv("APK_PASSWORD")
-            keyAlias = "movestrong"
+            keyAlias = System.getenv("APK_KEY_ALIAS")
             keyPassword = System.getenv("APK_PASSWORD")
         }
     }
