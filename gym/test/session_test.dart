@@ -12,7 +12,7 @@ void main() {
     final field = find.byType(TextFormField).first;
     await tester.ensureVisible(field);
     await tester.tap(field);
-    await tester.enterText(field, '6, 6');
+    await tester.enterText(field, '6');
     tester.view.viewInsets = const FakeViewPadding(bottom: 240);
     addTearDown(tester.view.resetViewInsets);
     await tester.pump();
@@ -23,7 +23,13 @@ void main() {
           .hasFocus,
       isTrue,
     );
-    expect(find.text('6, 6'), findsOneWidget);
+    expect(
+      tester
+          .widget<EditableText>(find.byType(EditableText).first)
+          .controller
+          .text,
+      '6',
+    );
   });
   test(
     'missed training supplies no evidence and swapped legs get recovery',

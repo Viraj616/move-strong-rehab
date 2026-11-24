@@ -28,15 +28,23 @@ void main() {
       await launch(t);
       await tap(t, 'Pull + core');
       final fields = find.byType(TextFormField);
-      for (final pair in [
-        (0, '6, 5, 4'),
-        (1, '20'),
-        (2, '3'),
-        (3, '2'),
-        (4, '0'),
-      ]) {
+      for (final pair in [(0, '6'), (1, '5'), (2, '4')]) {
         await t.ensureVisible(fields.at(pair.$1));
         await t.enterText(fields.at(pair.$1), pair.$2);
+      }
+      for (final item in [
+        ('Assistance (kg)', '20'),
+        ('RIR', '3'),
+        ('Shoulder during (0–10)', '2'),
+        ('Shoulder next morning (0–10)', '0'),
+      ]) {
+        final f = find
+            .byWidgetPredicate(
+              (w) => w is TextField && w.decoration?.labelText == item.$1,
+            )
+            .first;
+        await t.ensureVisible(f);
+        await t.enterText(f, item.$2);
       }
       await tap(t, 'Add sauna');
       await tap(t, 'Add steam');

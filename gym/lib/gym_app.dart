@@ -7,6 +7,7 @@ import 'training.dart';
 import 'old_storage.dart' if (dart.library.js_interop) 'old_storage_web.dart';
 import 'demo.dart';
 import 'appearance.dart';
+import 'set_entry.dart';
 import 'update_tile.dart';
 
 class GymApp extends StatefulWidget {
@@ -612,24 +613,7 @@ class _SessionState extends State<Session> {
                           value: e['skillReady'] == true,
                           onChanged: (v) => setState(() => e['skillReady'] = v),
                         ),
-                      TextFormField(
-                        initialValue: (e['sets'] as List).join(', '),
-                        decoration: const InputDecoration(
-                          labelText: 'Actual reps, seconds or distance per set',
-                        ),
-                        validator: (s) =>
-                            (s ?? '')
-                                .split(',')
-                                .where((v) => v.trim().isNotEmpty)
-                                .any((v) => (num.tryParse(v.trim()) ?? -1) < 0)
-                            ? 'Enter numbers separated by commas'
-                            : null,
-                        onSaved: (s) => e['sets'] = (s ?? '')
-                            .split(',')
-                            .map((v) => num.tryParse(v.trim()))
-                            .whereType<num>()
-                            .toList(),
-                      ),
+                      SetEntry(e),
                       field(
                         e,
                         'load',
