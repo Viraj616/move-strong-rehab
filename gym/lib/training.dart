@@ -43,11 +43,11 @@ const catalogue = <String, (String, int, String, String)>{
     'seconds',
     'Press down and lift bent knees within comfortable range.',
   ),
-  'Squat': (
-    'barbell',
+  'Seated leg press': (
+    'machines',
     8,
     'reps',
-    'Set the rack safeties and keep pressure off the plate site.',
+    'Use a seated leg press with a backrest and footplate, without shoulder pads. Skip if unavailable. Start with a fresh load.',
   ),
   'DB Romanian deadlift': (
     'dumbbells',
@@ -55,11 +55,11 @@ const catalogue = <String, (String, int, String, String)>{
     'reps',
     'Hinge at the hips with the weights close.',
   ),
-  'Split squat': (
+  'Single-leg glute bridge': (
     '',
     8,
     'reps/side',
-    'Lower under control and keep the front foot planted.',
+    'Lie on your back, plant one foot and raise your hips with your pelvis level. Use bodyweight.',
   ),
   'Easy swim': (
     'pool',
@@ -114,7 +114,7 @@ const catalogue = <String, (String, int, String, String)>{
 const prehab = ['External rotation', 'Wall push-up plus'];
 const split = [
   ['Assisted pull-up', 'Cable row', 'Tuck L-sit', ...prehab],
-  ['Squat', 'DB Romanian deadlift', 'Split squat'],
+  ['Seated leg press', 'DB Romanian deadlift', 'Single-leg glute bridge'],
   ['Easy swim', ...prehab],
   ['DB bench press', 'Assisted dip', 'Pike hold', ...prehab],
   ['Cable row', 'Push-up', 'Glute bridge', ...prehab],
@@ -276,7 +276,7 @@ List<Row> draft(DateTime week, List<Row> history, {Row baseline = const {}}) {
             reason +=
                 ' Use the closest available assistance at or above this target.';
           } else if ([
-                'Squat',
+                'Seated leg press',
                 'DB Romanian deadlift',
                 'DB bench press',
                 'Cable row',
@@ -370,7 +370,11 @@ List<Row> draft(DateTime week, List<Row> history, {Row baseline = const {}}) {
         load = withinWeek['load'];
       }
       if (suspended &&
-          !['Easy run', 'Glute bridge', 'Split squat'].contains(name)) {
+          ![
+            'Easy run',
+            'Glute bridge',
+            'Single-leg glute bridge',
+          ].contains(name)) {
         sets = 0;
         state = 'regress';
         reason =
@@ -427,6 +431,8 @@ List<Row> draft(DateTime week, List<Row> history, {Row baseline = const {}}) {
 }
 
 String? rejectSuggestion(Row suggestion, List<Row> targets) {
+  if (!catalogue.containsKey(suggestion['name']))
+    return 'Exercise outside the current gym programme.';
   final allowed = targets
       .where((t) => t['name'] == suggestion['name'])
       .firstOrNull;

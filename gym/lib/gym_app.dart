@@ -364,7 +364,7 @@ class _GymState extends State<GymApp> {
                   'Assisted pull-up',
                   'Tuck L-sit',
                   'Push-up',
-                  'Squat',
+                  'Seated leg press',
                   'DB Romanian deadlift',
                   'DB bench press',
                 ])

@@ -37,6 +37,24 @@ Row target(List<Row> logs, String name, {Row baseline = const {}}) =>
         .cast<Row>()
         .firstWhere((t) => t['name'] == name);
 void main() {
+  test('new lower sessions exclude squats and never reuse old squat loads', () {
+    final old = {...entry('Squat'), 'load': 60};
+    for (final offset in [0, 7, 14, 28, 42]) {
+      final plan = draft(start.add(Duration(days: offset)), [log(0, old)]);
+      final all = plan.expand((d) => d['targets'] as List);
+      expect(
+        all.any(
+          (e) =>
+              e['name'].toString().toLowerCase().contains('squat') ||
+              catalogue[e['name']]?.$1 == 'barbell',
+        ),
+        false,
+      );
+      final press = all.firstWhere((e) => e['name'] == 'Seated leg press');
+      expect(press['load'], isNull);
+    }
+    expect(rejectSuggestion(old, [old]), isNotNull);
+  });
   test('calendar, re-entry volume, prehab, rest and asthma cues', () {
     final first = draft(start, []),
         second = draft(start.add(const Duration(days: 7)), []);
@@ -77,16 +95,16 @@ void main() {
   test(
     'two stalled weeks trigger review and fatigue triggers early deload',
     () {
-      final e = entry('Squat', status: 'modified');
+      final e = entry('Seated leg press', status: 'modified');
       expect(
-        target([log(1, e), log(8, e)], 'Squat')['reason'],
+        target([log(1, e), log(8, e)], 'Seated leg press')['reason'],
         contains('recovery'),
       );
       expect(
         target([
           log(7, e, fatigue: 8),
           log(8, e, fatigue: 9),
-        ], 'Squat')['state'],
+        ], 'Seated leg press')['state'],
         'deload',
       );
     },
@@ -129,17 +147,17 @@ void main() {
     expect(
       target([
         log(7, {
-          ...entry('Squat'),
+          ...entry('Seated leg press'),
           'target': 12,
           'sets': [12, 12, 12],
           'load': 40,
         }),
-      ], 'Squat')['load'],
+      ], 'Seated leg press')['load'],
       41,
     );
   });
   test('AI validator checks reason, load, volume, keys and suspended work', () {
-    final t = target([], 'Squat');
+    final t = target([], 'Seated leg press');
     final s = {
       for (final k in ['name', 'load', 'plannedSets', 'target']) k: t[k],
       'reason': 'Reviewed',

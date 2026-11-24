@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 // Side-view landmarks, in order: shoulder, pelvis, knee, foot, elbow, hand.
 const poses = <String, List<int>>{
+  'pressStart': [68, 28, 60, 54, 36, 49, 32, 69, 62, 42, 59, 52],
+  'pressEnd': [68, 28, 60, 54, 36, 59, 14, 66, 62, 42, 59, 52],
   'stand': [45, 24, 45, 49, 44, 67, 43, 86, 49, 40, 52, 52],
   'squat': [42, 36, 50, 57, 34, 62, 40, 86, 50, 42, 55, 36],
   'hinge': [25, 39, 53, 48, 47, 68, 44, 86, 26, 52, 29, 67],
@@ -30,9 +32,9 @@ const poses = <String, List<int>>{
   'runEnd': [49, 27, 43, 49, 35, 62, 23, 62, 57, 43, 65, 38],
 };
 const frames = {
-  'Squat': ['stand', 'squat'],
+  'Seated leg press': ['pressStart', 'pressEnd'],
   'DB Romanian deadlift': ['stand', 'hinge'],
-  'Split squat': ['stand', 'lunge'],
+  'Single-leg glute bridge': ['bridge', 'bridgeEnd'],
   'Assisted pull-up': ['hang', 'pull'],
   'Cable row': ['row', 'rowEnd'],
   'Tuck L-sit': ['tuck', 'tuck'],
