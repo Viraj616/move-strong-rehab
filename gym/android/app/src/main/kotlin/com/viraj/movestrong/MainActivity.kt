@@ -14,6 +14,7 @@ class MainActivity : FlutterActivity() {
     private var exportText: String? = null
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        AppUpdates(this).register(engine)
         MethodChannel(engine.dartExecutor.binaryMessenger,"move_strong/backup").setMethodCallHandler { call, result ->
             if(call.method !in listOf("export","restore")){ result.notImplemented(); return@setMethodCallHandler }
             if(exportResult != null){ result.error("busy","Another export is open",null); return@setMethodCallHandler }

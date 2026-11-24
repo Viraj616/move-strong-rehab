@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'training.dart';
 import 'old_storage.dart' if (dart.library.js_interop) 'old_storage_web.dart';
 import 'demo.dart';
+import 'update_tile.dart';
 
 class GymApp extends StatefulWidget {
   const GymApp({super.key});
@@ -302,6 +303,7 @@ class _GymState extends State<GymApp> {
             : [
                 if (!kIsWeb &&
                     defaultTargetPlatform == TargetPlatform.android) ...[
+                  const UpdateTile(),
                   ListTile(
                     title: const Text('Export all data'),
                     onTap: () => backup(false),
