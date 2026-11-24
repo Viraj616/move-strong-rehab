@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'training.dart';
 import 'old_storage.dart' if (dart.library.js_interop) 'old_storage_web.dart';
 import 'demo.dart';
+import 'appearance.dart';
 import 'update_tile.dart';
 
 class GymApp extends StatefulWidget {
@@ -199,30 +200,39 @@ class _GymState extends State<GymApp> {
         padding: const EdgeInsets.all(16),
         children: page == 0
             ? [
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: () => setState(
-                        () => week = week.subtract(const Duration(days: 7)),
+                WeekBanner(
+                  week: week,
+                  recorded: [
+                    for (final d in plan)
+                      logs.any(
+                        (l) =>
+                            l['date'] == d['date'] && l['actual'] != 'Missed',
                       ),
-                    ),
-                    Text(dayKey(week)),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: () => setState(
-                        () => week = week.add(const Duration(days: 7)),
-                      ),
-                    ),
                   ],
+                  active: [
+                    for (final d in plan) (d['targets'] as List).isNotEmpty,
+                  ],
+                  previous: () => setState(
+                    () => week = week.subtract(const Duration(days: 7)),
+                  ),
+                  next: () =>
+                      setState(() => week = week.add(const Duration(days: 7))),
                 ),
                 for (final day in plan)
                   Card(
                     child: ListTile(
+                      leading: DayStamp(
+                        DateTime.parse(day['date']),
+                        today: day['date'] == dayKey(DateTime.now()),
+                      ),
+                      trailing: day['title'] == 'Rest'
+                          ? const Icon(Icons.spa_outlined)
+                          : const Icon(Icons.chevron_right),
                       title: Text(day['title']),
                       subtitle: Text(
-                        '${day['date']} · ${logs.any((l) => l['date'] == day['date'])
+                        '${(day['targets'] as List).length > 0 ? "${day['targets'].length} exercises · " : ""}${logs.any((l) => l['date'] == day['date'] && l['actual'] == 'Missed')
+                            ? 'Missed'
+                            : logs.any((l) => l['date'] == day['date'])
                             ? 'Logged'
                             : day['title'] == 'Rest'
                             ? 'Rest'
@@ -301,14 +311,17 @@ class _GymState extends State<GymApp> {
                 ),
               ]
             : [
+                const SectionLabel('App & backups'),
                 if (!kIsWeb &&
                     defaultTargetPlatform == TargetPlatform.android) ...[
                   const UpdateTile(),
                   ListTile(
+                    leading: const Icon(Icons.file_upload_outlined),
                     title: const Text('Export all data'),
                     onTap: () => backup(false),
                   ),
                   ListTile(
+                    leading: const Icon(Icons.restore_outlined),
                     title: const Text('Restore full backup'),
                     onTap: () => backup(true),
                   ),
@@ -346,7 +359,9 @@ class _GymState extends State<GymApp> {
                       setState(() {});
                     },
                   ),
+                const SectionLabel('Training progress'),
                 ListTile(
+                  leading: const Icon(Icons.monitor_weight_outlined),
                   title: Text('Bodyweight · $kg kg'),
                   onTap: () async {
                     final n = double.tryParse(
@@ -388,6 +403,7 @@ class _GymState extends State<GymApp> {
                             ),
                     ],
                   ),
+                const SectionLabel('Baseline retests'),
                 for (final name in [
                   'Max strict pull-ups',
                   'Dead hang (s)',
@@ -409,6 +425,7 @@ class _GymState extends State<GymApp> {
                       }
                     },
                   ),
+                const SectionLabel('Workout history'),
                 OutlinedButton(
                   onPressed: () async {
                     final s = await input(
@@ -538,6 +555,7 @@ class _SessionState extends State<Session> {
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
               '${log['date']} · ${DateTime.parse(log['date']).weekday < 6 ? '15:00–16:30' : 'Conversational pace'}',
@@ -554,8 +572,24 @@ class _SessionState extends State<Session> {
                         e['variation'] ?? e['name'],
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
-                      Text(
-                        "${e['plannedSets']} × ${e['target']} ${e['unit']} · rest ${e['restSeconds']} s · RIR 3–4",
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffedf3df),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          "${e['plannedSets']} × ${e['target']} ${e['unit']} · rest ${e['restSeconds']} s · RIR 3–4",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: ink,
+                          ),
+                        ),
                       ),
                       Text(e['cue']),
                       if (e['load'] != null)
